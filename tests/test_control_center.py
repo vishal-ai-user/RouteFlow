@@ -370,3 +370,60 @@ async def test_paginated_logs_filtering_and_usage(auth_client: AsyncClient) -> N
     assert len(summary["daily_usage"]) > 0
     assert len(summary["provider_usage"]) > 0
     assert len(summary["model_usage"]) > 0
+
+
+@pytest.mark.anyio
+async def test_environment_configured_providers_in_control_center(auth_client: AsyncClient) -> None:
+    """Verify that environment-configured providers are visible and handle CRUD operations."""
+    from aegis.providers.nvidia import NvidiaProvider
+    from aegis.providers.pool import PoolMember, get_global_pool
+
+    # 1. Register an environment provider manually in the global pool (not in DB)
+    pool = get_global_pool()
+    provider = NvidiaProvider(
+        name="Env Provider",
+        api_key="nvapi-env-12345",
+        base_url="https://api.nvidia.com/v1",
+        timeout_seconds=60,
+    )
+    member = PoolMember(
+        provider_id="nvidia-env-only",
+        display_name="Env Provider",
+        provider=provider,
+        enabled=True,
+    )
+    pool.register_provider(member)
+
+    # 2. Verify it shows up in GET /api/providers
+    list_resp = await auth_client.get("/api/providers")
+    assert list_resp.status_code == 200
+    providers = list_resp.json()
+    env_prov = next((p for p in providers if p["provider_id"] == "nvidia-env-only"), None)
+    assert env_prov is not None
+    assert env_prov["display_name"] == "Env Provider"
+    assert env_prov["api_key"] == "nvapi-...2345"
+    assert env_prov["id"] == 0
+
+    # 3. Verify PUT returns 400 Bad Request
+    update_resp = await auth_client.put(
+        "/api/providers/nvidia-env-only", json={"display_name": "New Name"}
+    )
+    assert update_resp.status_code == 400
+    assert "environment" in update_resp.json()["detail"]
+
+    # 4. Verify DELETE returns 400 Bad Request
+    delete_resp = await auth_client.delete("/api/providers/nvidia-env-only")
+    assert delete_resp.status_code == 400
+    assert "environment" in delete_resp.json()["detail"]
+
+    # 5. Verify disable toggles pool member state and returns 200
+    disable_resp = await auth_client.post("/api/providers/nvidia-env-only/disable")
+    assert disable_resp.status_code == 200
+    assert disable_resp.json()["enabled"] is False
+    assert pool.get_provider("nvidia-env-only").enabled is False
+
+    # 6. Verify enable toggles pool member state and returns 200
+    enable_resp = await auth_client.post("/api/providers/nvidia-env-only/enable")
+    assert enable_resp.status_code == 200
+    assert enable_resp.json()["enabled"] is True
+    assert pool.get_provider("nvidia-env-only").enabled is True

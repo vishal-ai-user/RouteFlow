@@ -94,3 +94,7 @@ logs/
 .DS_Store?
 ehthumbs.db
 Thumbs.db
+
+# Documentation overrides
+/md files/PRODUCTION_RELEASE_GUIDE.md
+

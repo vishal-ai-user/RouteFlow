@@ -226,7 +226,9 @@ async def list_providers() -> list[dict[str, Any]]:
     records = await provider_repo.get_all()
 
     result = []
+    db_provider_ids = set()
     for r in records:
+        db_provider_ids.add(r.provider_id)
         try:
             raw_key = provider_repo.decrypt_key(r.api_key_encrypted)
             masked_key = mask_api_key(raw_key)
@@ -245,6 +247,26 @@ async def list_providers() -> list[dict[str, Any]]:
                 "updated_at": r.updated_at,
             }
         )
+
+    # Append environment-bootstrapped providers from global pool if not in database
+    pool = get_global_pool()
+    for p_id, member in pool._members.items():
+        if p_id not in db_provider_ids:
+            raw_key = member.provider.api_key or ""
+            masked_key = mask_api_key(raw_key)
+            result.append(
+                {
+                    "id": 0,
+                    "provider_id": p_id,
+                    "display_name": member.display_name,
+                    "base_url": member.provider.base_url,
+                    "enabled": member.enabled,
+                    "api_key": masked_key,
+                    "created_at": "",
+                    "updated_at": "",
+                }
+            )
+
     return result
 
 
@@ -256,7 +278,8 @@ async def create_provider(payload: ProviderCreatePayload) -> dict[str, Any]:
     provider_repo = ProviderRecordRepository()
 
     existing = await provider_repo.get(payload.provider_id)
-    if existing:
+    pool = get_global_pool()
+    if existing or payload.provider_id in pool._members:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Provider with ID '{payload.provider_id}' already exists.",
@@ -304,13 +327,25 @@ async def create_provider(payload: ProviderCreatePayload) -> dict[str, Any]:
 @router.put("/api/providers/{provider_id}", dependencies=[Depends(require_auth)])
 async def update_provider(provider_id: str, payload: ProviderUpdatePayload) -> dict[str, Any]:
     """Update fields on an existing provider, syncing to the database and in-memory pool."""
-    provider_repo = ProviderRecordRepository()
+    pool = get_global_pool()
+    member = pool.get_provider(provider_id)
 
+    provider_repo = ProviderRecordRepository()
     existing = await provider_repo.get(provider_id)
-    if not existing:
+
+    if not existing and not member:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Provider '{provider_id}' not found.",
+        )
+
+    if not existing and member:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"Provider '{provider_id}' is configured via the environment "
+                "and cannot be modified."
+            ),
         )
 
     # Update in DB
@@ -323,8 +358,6 @@ async def update_provider(provider_id: str, payload: ProviderUpdatePayload) -> d
     )
 
     # Sync with in-memory pool
-    pool = get_global_pool()
-    member = pool.get_provider(provider_id)
     if member:
         if payload.display_name is not None:
             member.display_name = payload.display_name
@@ -354,18 +387,27 @@ async def update_provider(provider_id: str, payload: ProviderUpdatePayload) -> d
 @router.delete("/api/providers/{provider_id}", dependencies=[Depends(require_auth)])
 async def delete_provider(provider_id: str) -> dict[str, bool]:
     """Remove a provider member from the database and the active pool."""
-    provider_repo = ProviderRecordRepository()
+    pool = get_global_pool()
+    member = pool.get_provider(provider_id)
 
+    provider_repo = ProviderRecordRepository()
     existing = await provider_repo.get(provider_id)
-    if not existing:
+
+    if not existing and not member:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Provider '{provider_id}' not found.",
         )
 
-    await provider_repo.delete(provider_id)
+    if not existing and member:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"Provider '{provider_id}' is configured via the environment and cannot be deleted."
+            ),
+        )
 
-    pool = get_global_pool()
+    await provider_repo.delete(provider_id)
     pool.remove_provider(provider_id)
 
     return {"ok": True}
@@ -374,22 +416,29 @@ async def delete_provider(provider_id: str) -> dict[str, bool]:
 @router.post("/api/providers/{provider_id}/enable", dependencies=[Depends(require_auth)])
 async def enable_provider(provider_id: str) -> dict[str, Any]:
     """Mark a provider enabled in both DB and runtime pool."""
-    provider_repo = ProviderRecordRepository()
+    pool = get_global_pool()
+    member = pool.get_provider(provider_id)
 
+    provider_repo = ProviderRecordRepository()
     existing = await provider_repo.get(provider_id)
-    if not existing:
+
+    if not existing and not member:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Provider '{provider_id}' not found.",
         )
 
-    await provider_repo.update(provider_id=provider_id, enabled=True)
+    if existing:
+        await provider_repo.update(provider_id=provider_id, enabled=True)
 
-    pool = get_global_pool()
     pool.enable_provider(provider_id)
 
-    updated_rec = await provider_repo.get(provider_id)
-    raw_key = provider_repo.decrypt_key(updated_rec.api_key_encrypted) if updated_rec else ""
+    raw_key = ""
+    if existing:
+        updated_rec = await provider_repo.get(provider_id)
+        raw_key = provider_repo.decrypt_key(updated_rec.api_key_encrypted) if updated_rec else ""
+    elif member:
+        raw_key = member.provider.api_key or ""
 
     return {
         "provider_id": provider_id,
@@ -401,22 +450,29 @@ async def enable_provider(provider_id: str) -> dict[str, Any]:
 @router.post("/api/providers/{provider_id}/disable", dependencies=[Depends(require_auth)])
 async def disable_provider(provider_id: str) -> dict[str, Any]:
     """Mark a provider disabled in both DB and runtime pool."""
-    provider_repo = ProviderRecordRepository()
+    pool = get_global_pool()
+    member = pool.get_provider(provider_id)
 
+    provider_repo = ProviderRecordRepository()
     existing = await provider_repo.get(provider_id)
-    if not existing:
+
+    if not existing and not member:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Provider '{provider_id}' not found.",
         )
 
-    await provider_repo.update(provider_id=provider_id, enabled=False)
+    if existing:
+        await provider_repo.update(provider_id=provider_id, enabled=False)
 
-    pool = get_global_pool()
     pool.disable_provider(provider_id)
 
-    updated_rec = await provider_repo.get(provider_id)
-    raw_key = provider_repo.decrypt_key(updated_rec.api_key_encrypted) if updated_rec else ""
+    raw_key = ""
+    if existing:
+        updated_rec = await provider_repo.get(provider_id)
+        raw_key = provider_repo.decrypt_key(updated_rec.api_key_encrypted) if updated_rec else ""
+    elif member:
+        raw_key = member.provider.api_key or ""
 
     return {
         "provider_id": provider_id,
