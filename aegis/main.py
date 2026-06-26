@@ -78,6 +78,21 @@ def create_app() -> FastAPI:
     # Include API routes.
     app.include_router(api_router)
 
+    # Redirect root to UI
+    from fastapi.responses import RedirectResponse
+
+    @app.get("/")
+    async def redirect_to_ui() -> RedirectResponse:
+        return RedirectResponse(url="/ui/")
+
+    # Serve static UI files
+    import os
+
+    from fastapi.staticfiles import StaticFiles
+
+    ui_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ui")
+    app.mount("/ui", StaticFiles(directory=ui_dir, html=True), name="ui")
+
     return app
 
 
