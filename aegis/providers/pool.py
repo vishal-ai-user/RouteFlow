@@ -129,6 +129,27 @@ class ProviderPool:
 
         return eligible
 
+    def sync_model_mappings(self) -> None:
+        """Reload all model mappings from the database and apply to all registered providers."""
+        try:
+            from aegis.persistence.db import get_db_connection
+            with get_db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    """
+                    SELECT logical_model, nvidia_model
+                    FROM model_mappings
+                    """
+                )
+                mapping_rows = cursor.fetchall()
+                model_mapping = {r["logical_model"]: r["nvidia_model"] for r in mapping_rows}
+
+            for member in self._members.values():
+                member.provider.model_mapping = model_mapping
+        except Exception:
+            # Database or table might not exist during tests or early bootstrap
+            pass
+
 
 _global_pool: ProviderPool | None = None
 
@@ -233,5 +254,6 @@ def get_global_pool() -> ProviderPool:
 
         get_logger(__name__).warning("Failed to load providers from database: %s", str(exc))
 
+    pool.sync_model_mappings()
     _global_pool = pool
     return pool

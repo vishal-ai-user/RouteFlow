@@ -56,6 +56,13 @@ async def create_message(request: CreateMessageRequest) -> Any:
         request.max_tokens,
     )
 
+    import os
+    from aegis.core.logging import request_origin_var
+    if "PYTEST_CURRENT_TEST" in os.environ:
+        request_origin_var.set("Unit test")
+    else:
+        request_origin_var.set("Claude Code")
+
     # Translate the gateway request into an internal request.
     request_id = request_id_var.get() or f"req_{uuid.uuid4().hex[:16]}"
     internal_request = translate_request(request, request_id=request_id)

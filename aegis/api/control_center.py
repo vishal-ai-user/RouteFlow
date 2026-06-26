@@ -311,6 +311,7 @@ async def create_provider(payload: ProviderCreatePayload) -> dict[str, Any]:
         enabled=payload.enabled,
     )
     pool.register_provider(member)
+    pool.sync_model_mappings()
 
     return {
         "id": record.id,
@@ -485,6 +486,8 @@ async def disable_provider(provider_id: str) -> dict[str, Any]:
 async def test_provider_connection(provider_id: str) -> dict[str, Any]:
     """Run a small completion request against a provider to test its credentials."""
     pool = get_global_pool()
+    from aegis.core.logging import request_origin_var
+    request_origin_var.set("Control Center connection test")
     member = pool.get_provider(provider_id)
     if not member:
         raise HTTPException(
@@ -568,6 +571,17 @@ async def create_model_mapping(payload: ModelMappingPayload) -> dict[str, Any]:
         logical_model=payload.logical_model,
         nvidia_model=payload.nvidia_model,
     )
+    p = get_global_pool()
+    p.sync_model_mappings()
+    from aegis.core.logging import get_logger
+    member_details = [
+        (pid, id(m.provider), id(m.provider.model_mapping))
+        for pid, m in p._members.items()
+    ]
+    get_logger(__name__).warning(
+        f"TEMP LOG [create-mapping]: id(get_global_pool())={id(p)}, "
+        f"members={member_details}"
+    )
     return {
         "id": record.id,
         "logical_model": record.logical_model,
@@ -605,6 +619,17 @@ async def update_model_mapping(
             detail="Failed to retrieve updated mapping.",
         )
 
+    p = get_global_pool()
+    p.sync_model_mappings()
+    from aegis.core.logging import get_logger
+    member_details = [
+        (pid, id(m.provider), id(m.provider.model_mapping))
+        for pid, m in p._members.items()
+    ]
+    get_logger(__name__).warning(
+        f"TEMP LOG [update-mapping]: id(get_global_pool())={id(p)}, "
+        f"members={member_details}"
+    )
     return {
         "id": updated_rec.id,
         "logical_model": updated_rec.logical_model,
@@ -627,6 +652,17 @@ async def delete_model_mapping(logical_model: str) -> dict[str, bool]:
         )
 
     await mapping_repo.delete(logical_model)
+    p = get_global_pool()
+    p.sync_model_mappings()
+    from aegis.core.logging import get_logger
+    member_details = [
+        (pid, id(m.provider), id(m.provider.model_mapping))
+        for pid, m in p._members.items()
+    ]
+    get_logger(__name__).warning(
+        f"TEMP LOG [delete-mapping]: id(get_global_pool())={id(p)}, "
+        f"members={member_details}"
+    )
     return {"ok": True}
 
 

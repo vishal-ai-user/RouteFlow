@@ -48,8 +48,34 @@ class NvidiaProvider(BaseProvider):
         )
 
         try:
+            import json
+            # Mask Authorization header
+            masked_headers = dict(headers)
+            if "Authorization" in masked_headers:
+                auth_val = masked_headers["Authorization"]
+                if auth_val.startswith("Bearer "):
+                    token = auth_val.removeprefix("Bearer ")
+                    if len(token) > 8:
+                        masked_headers["Authorization"] = f"Bearer {token[:6]}...{token[-4:]}"
+                    else:
+                        masked_headers["Authorization"] = "Bearer ..."
+                else:
+                    masked_headers["Authorization"] = "..."
+
+            print("Final URL:", url)
+            print("HTTP Method: POST")
+            print("Headers:", json.dumps(masked_headers, indent=2))
+            print("Payload:")
+            print(json.dumps(payload, indent=2, ensure_ascii=False))
+
             async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
                 response = await client.post(url, json=payload, headers=headers)
+                try:
+                    print("HTTP status code:", response.status_code)
+                    print("Response headers:", json.dumps(dict(response.headers), indent=2))
+                    print("Raw response body:", response.text)
+                except Exception:
+                    pass
                 response.raise_for_status()
                 response_data = response.json()
                 return self.deserialize_response(response_data)
@@ -112,11 +138,39 @@ class NvidiaProvider(BaseProvider):
         tool_buffers: dict[int, dict[str, Any]] = {}
 
         try:
-            async with (
-                httpx.AsyncClient(timeout=self.timeout_seconds) as client,
-                client.stream("POST", url, json=payload, headers=headers) as response,
-            ):
-                response.raise_for_status()
+            import json
+            # Mask Authorization header
+            masked_headers = dict(headers)
+            if "Authorization" in masked_headers:
+                auth_val = masked_headers["Authorization"]
+                if auth_val.startswith("Bearer "):
+                    token = auth_val.removeprefix("Bearer ")
+                    if len(token) > 8:
+                        masked_headers["Authorization"] = f"Bearer {token[:6]}...{token[-4:]}"
+                    else:
+                        masked_headers["Authorization"] = "Bearer ..."
+                else:
+                    masked_headers["Authorization"] = "..."
+
+            print("Final URL:", url)
+            print("HTTP Method: POST")
+            print("Headers:", json.dumps(masked_headers, indent=2))
+            print("Payload:")
+            print(json.dumps(payload, indent=2, ensure_ascii=False))
+
+            async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
+                async with client.stream("POST", url, json=payload, headers=headers) as response:
+                    try:
+                        print("HTTP status code:", response.status_code)
+                        print("Response headers:", json.dumps(dict(response.headers), indent=2))
+                        if response.status_code != 200:
+                            raw_body = await response.aread()
+                            print("Raw response body:", raw_body.decode("utf-8", errors="ignore"))
+                        else:
+                            print("Raw response body: <Streaming Content - Not Consumed to Preserve Generator>")
+                    except Exception:
+                        pass
+                    response.raise_for_status()
 
                 async for line in response.iter_lines():
                     if not line:
