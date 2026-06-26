@@ -71,6 +71,7 @@ class TestNvidiaRequestSerialization:
         payload = provider.serialize_request(req)
         assert payload["model"] == "nvidia/llama-3.1-70b-instruct"
 
+
     def test_system_prompt_merging(self) -> None:
         provider = NvidiaProvider("test", "k", "https://api")
         req = InternalRequest(

@@ -242,6 +242,44 @@ async def test_provider_connection_test(auth_client: AsyncClient) -> None:
         assert "Mock provider credentials invalid." in result["error_message"]
 
 
+@pytest.mark.anyio
+async def test_provider_connection_test_model_selection(auth_client: AsyncClient) -> None:
+    """Verify connectivity test endpoint uses model mappings priority list or fallback."""
+    payload_a = {
+        "provider_id": "nvidia-test-conn-map",
+        "display_name": "Test Conn Mapped",
+        "api_key": "nvapi-somekey",
+        "base_url": "https://api.nvidia.com/v1",
+        "enabled": True,
+    }
+    await auth_client.post("/api/providers", json=payload_a)
+
+    pool = get_global_pool()
+    member = pool.get_provider("nvidia-test-conn-map")
+    assert member is not None
+    member.provider.model_mapping = {"logical-model-x": "provider-model-y"}
+
+    with patch(
+        "aegis.providers.nvidia.NvidiaProvider.complete", new_callable=AsyncMock
+    ) as mock_complete:
+        mock_complete.return_value = MagicMock()
+        await auth_client.post("/api/providers/nvidia-test-conn-map/test")
+        mock_complete.assert_called_once()
+        called_req = mock_complete.call_args[0][0]
+        assert called_req.model == "logical-model-x"
+
+    # Case B: no mappings, should fallback to "meta/llama-3.3-70b-instruct"
+    member.provider.model_mapping = {}
+    with patch(
+        "aegis.providers.nvidia.NvidiaProvider.complete", new_callable=AsyncMock
+    ) as mock_complete:
+        mock_complete.return_value = MagicMock()
+        await auth_client.post("/api/providers/nvidia-test-conn-map/test")
+        mock_complete.assert_called_once()
+        called_req = mock_complete.call_args[0][0]
+        assert called_req.model == "meta/llama-3.3-70b-instruct"
+
+
 # ===========================================================================
 # Model Mapping CRUD Tests
 # ===========================================================================

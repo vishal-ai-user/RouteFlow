@@ -492,8 +492,18 @@ async def test_provider_connection(provider_id: str) -> dict[str, Any]:
             detail=f"Provider '{provider_id}' is not loaded in the active pool.",
         )
 
+    test_model = "meta/llama-3.3-70b-instruct"
+    if member.provider.model_mapping:
+        logical_models = list(member.provider.model_mapping.keys())
+        if logical_models:
+            test_model = logical_models[0]
+        else:
+            provider_models = list(member.provider.model_mapping.values())
+            if provider_models:
+                test_model = provider_models[0]
+
     test_req = InternalRequest(
-        model="test-ping",
+        model=test_model,
         messages=[
             InternalMessage(
                 role="user",
