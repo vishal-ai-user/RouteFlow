@@ -12,6 +12,9 @@ The gateway validates requests and passes them through the translator
 wired in subsequent milestones.
 """
 
+import uuid
+from typing import Any
+
 from fastapi import APIRouter, Depends
 
 from aegis.api.models import (
@@ -23,9 +26,12 @@ from aegis.api.models import (
 )
 from aegis.auth.guards import require_auth
 from aegis.config.settings import get_settings
-from aegis.core.errors import AegisError, ErrorType
 from aegis.core.logging import get_logger, request_id_var
-from aegis.translator import translate_request
+from aegis.providers.pool import get_global_pool
+from aegis.runtime.router import RuntimeRouter
+from aegis.runtime.scheduler import Scheduler
+from aegis.stream.sse import sse_streaming_response
+from aegis.translator import translate_request, translate_response
 
 logger = get_logger(__name__)
 
@@ -33,16 +39,12 @@ router = APIRouter(prefix="/v1", tags=["messages"], dependencies=[Depends(requir
 
 
 @router.post("/messages")
-async def create_message(request: CreateMessageRequest) -> dict:
+async def create_message(request: CreateMessageRequest) -> Any:
     """Create a message (Claude Code-compatible).
 
     Validates the request payload, translates it into the internal model,
-    and — once the provider pipeline is ready — forwards it through the
-    runtime → provider → streaming chain.
-
-    In Milestone 3, returns a structured error indicating the pipeline is
-    not yet configured. This proves auth + validation + translation work
-    end to end.
+    routes it through the runtime router to the selected provider,
+    and returns a translated JSON payload or SSE StreamingResponse.
     """
     logger.info(
         "Received message request: model=%s, messages=%d, stream=%s, max_tokens=%d",
@@ -64,12 +66,39 @@ async def create_message(request: CreateMessageRequest) -> dict:
         internal_request.stream,
     )
 
-    # The runtime/provider pipeline will be connected in Milestones 4–6.
-    raise AegisError(
-        ErrorType.PROVIDER_ERROR,
-        "Provider pipeline is not configured. "
-        "The NVIDIA provider adapter will be available after Milestone 4.",
+    # Initialize pool, scheduler, and runtime router
+    pool = get_global_pool()
+    settings = get_settings()
+    scheduler = Scheduler(mode=settings.scheduler_mode)
+    router_instance = RuntimeRouter(
+        pool=pool,
+        scheduler=scheduler,
+        max_retries=settings.retry_count,
+        cooldown_duration_seconds=30,
     )
+
+    # Estimate input tokens for the start event
+    total_chars = 0
+    if request.system:
+        total_chars += len(str(request.system))
+    for msg in request.messages:
+        total_chars += len(str(msg.content))
+    estimated_input_tokens = max(1, total_chars // 4)
+
+    if request.stream:
+        # Route streaming request
+        blocks_iterator = router_instance.route_stream(internal_request)
+        message_id = f"msg_{uuid.uuid4().hex[:16]}"
+        return sse_streaming_response(
+            blocks_iterator=blocks_iterator,
+            message_id=message_id,
+            model=request.model,
+            input_tokens=estimated_input_tokens,
+        )
+    else:
+        # Route non-streaming request
+        internal_response = await router_instance.route(internal_request)
+        return translate_response(internal_response)
 
 
 @router.post("/messages/count_tokens")

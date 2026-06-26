@@ -509,3 +509,37 @@ class TestRouterOrchestration:
         assert adapter2.stream_called_count == 0
         # Provider 1 is recorded as a failure
         assert member1.recent_failure_count == 1
+
+    @pytest.mark.asyncio
+    async def test_stream_client_cancellation_decrements_load(self) -> None:
+        pool = ProviderPool()
+
+        # Provider yielding multiple blocks
+        blocks_data = [
+            InternalResponseBlock(type=ContentBlockType.TEXT, text="Chunk 1"),
+            InternalResponseBlock(type=ContentBlockType.TEXT, text="Chunk 2"),
+        ]
+        adapter = MockTestProvider("adap-1", Exception("unused"), stream_blocks=blocks_data)
+        member = PoolMember("p1", "P1", adapter)
+        pool.register_provider(member)
+
+        scheduler = Scheduler(mode="health-first")
+        router = RuntimeRouter(pool, scheduler, max_retries=2)
+        req = InternalRequest(model="m", messages=[], max_tokens=10)
+
+        # Call route_stream and get the async iterator
+        stream_gen = router.route_stream(req)
+        iterator = stream_gen.__aiter__()
+
+        # Fetch first block (completes connection & yields first_block)
+        first = await iterator.__anext__()
+        assert first.text == "Chunk 1"
+
+        # Active requests is incremented
+        assert member.active_requests == 1
+
+        # Simulate client cancel / disconnect by closing the generator
+        await stream_gen.aclose()
+
+        # Verify that GeneratorExit triggered cleanup and active_requests is decremented
+        assert member.active_requests == 0

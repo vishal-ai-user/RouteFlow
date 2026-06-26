@@ -5,8 +5,12 @@ Follows ARCHITECTURE.md §9 and pool rules.
 
 from __future__ import annotations
 
+import os
 from datetime import datetime
 from typing import TYPE_CHECKING
+
+from aegis.config.settings import get_settings
+from aegis.providers.nvidia import NvidiaProvider
 
 if TYPE_CHECKING:
     from aegis.providers.base import BaseProvider
@@ -124,3 +128,64 @@ class ProviderPool:
             eligible.append(member)
 
         return eligible
+
+
+_global_pool: ProviderPool | None = None
+
+
+def get_global_pool() -> ProviderPool:
+    """Get or initialize the global provider pool from settings/environment."""
+    global _global_pool
+    if _global_pool is not None:
+        return _global_pool
+
+    pool = ProviderPool()
+    settings = get_settings()
+
+    # Bootstrap providers from environment variables (Milestone 5/6)
+    # Loop from 1 to 10 looking for AEGIS_NVIDIA_{i}_API_KEY
+    for i in range(1, 11):
+        api_key_env = f"AEGIS_NVIDIA_{i}_API_KEY"
+        label_env = f"AEGIS_NVIDIA_{i}_LABEL"
+        base_url_env = f"AEGIS_NVIDIA_{i}_BASE_URL"
+
+        api_key = os.environ.get(api_key_env)
+        if not api_key:
+            continue
+
+        label = os.environ.get(label_env) or f"account-{i}"
+        base_url = os.environ.get(base_url_env) or "https://integrate.api.nvidia.com/v1"
+
+        provider = NvidiaProvider(
+            name=label,
+            api_key=api_key,
+            base_url=base_url,
+            timeout_seconds=float(settings.timeout_seconds),
+        )
+        member = PoolMember(
+            provider_id=f"nvidia-{i}",
+            display_name=label,
+            provider=provider,
+        )
+        pool.register_provider(member)
+
+    # Fallback: check for AEGIS_NVIDIA_API_KEY if no dynamic indexed accounts are found
+    if not pool._members:
+        single_key = os.environ.get("AEGIS_NVIDIA_API_KEY")
+        if single_key:
+            base_url = os.environ.get("AEGIS_NVIDIA_BASE_URL") or "https://integrate.api.nvidia.com/v1"
+            provider = NvidiaProvider(
+                name="default-nvidia",
+                api_key=single_key,
+                base_url=base_url,
+                timeout_seconds=float(settings.timeout_seconds),
+            )
+            member = PoolMember(
+                provider_id="nvidia-default",
+                display_name="Default NVIDIA NIM",
+                provider=provider,
+            )
+            pool.register_provider(member)
+
+    _global_pool = pool
+    return pool

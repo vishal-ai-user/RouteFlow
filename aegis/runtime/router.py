@@ -190,20 +190,24 @@ class RuntimeRouter:
             if connected:
                 break
 
-        # Yield the first block
-        yield first_block
-
-        # Now yield the rest. Mid-stream failures are not retryable but must update health.
+        # Yield the blocks and ensure cleanup on success, failure, or cancellation (GeneratorExit)
+        active_decremented = False
         try:
+            yield first_block
             async for block in iterator:
                 yield block
             self.pool.decrement_active_requests(member.provider_id)
+            active_decremented = True
             handle_provider_success(member)
         except Exception as stream_exc:
             self.pool.decrement_active_requests(member.provider_id)
+            active_decremented = True
             handle_provider_failure(
                 member,
                 cooldown_duration_seconds=self.cooldown_duration_seconds,
                 failure_threshold=self.consecutive_failure_threshold,
             )
             raise stream_exc
+        finally:
+            if not active_decremented:
+                self.pool.decrement_active_requests(member.provider_id)

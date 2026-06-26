@@ -8,6 +8,8 @@ Verifies:
 - Validation errors match structured error shape (API_SPEC.md §6)
 """
 
+from unittest.mock import AsyncMock, patch
+
 from httpx import AsyncClient
 
 # ---------------------------------------------------------------------------
@@ -63,7 +65,12 @@ async def test_messages_valid_with_stream_flag(auth_client: AsyncClient) -> None
         "max_tokens": 100,
         "stream": True,
     })
-    assert response.status_code == 502
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/event-stream")
+    sse_text = response.text
+    assert "message_start" in sse_text
+    assert "error" in sse_text
+    assert "provider_error" in sse_text
 
 
 async def test_messages_valid_with_tools(auth_client: AsyncClient) -> None:
@@ -302,3 +309,79 @@ async def test_models_returns_default_model(auth_client: AsyncClient) -> None:
     response = await auth_client.get("/v1/models")
     model_ids = [m["id"] for m in response.json()["data"]]
     assert "claude-sonnet-4-20250514" in model_ids
+
+
+# ---------------------------------------------------------------------------
+# POST /v1/messages — Routing integration (mocked)
+# ---------------------------------------------------------------------------
+
+
+async def test_messages_non_stream_success(auth_client: AsyncClient) -> None:
+    """POST /v1/messages non-streaming integration success."""
+    from aegis.core.schemas import (
+        ContentBlockType,
+        InternalResponse,
+        InternalResponseBlock,
+        InternalUsage,
+        StopReason,
+    )
+
+    mock_res = InternalResponse(
+        id="msg_test_123",
+        role="assistant",
+        content=[InternalResponseBlock(type=ContentBlockType.TEXT, text="Hello direct!")],
+        model="claude-sonnet-4-20250514",
+        stop_reason=StopReason.END_TURN,
+        usage=InternalUsage(input_tokens=10, output_tokens=5),
+    )
+
+    with patch(
+        "aegis.runtime.router.RuntimeRouter.route", new_callable=AsyncMock
+    ) as mock_route:
+        mock_route.return_value = mock_res
+
+        response = await auth_client.post(
+            "/v1/messages",
+            json={
+                "model": "claude-sonnet-4-20250514",
+                "messages": [{"role": "user", "content": "Hello"}],
+                "max_tokens": 100,
+                "stream": False,
+            },
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["id"] == "msg_test_123"
+        assert data["content"][0]["text"] == "Hello direct!"
+
+
+async def test_messages_stream_success(auth_client: AsyncClient) -> None:
+    """POST /v1/messages streaming integration success."""
+    from aegis.core.schemas import ContentBlockType, InternalResponseBlock
+
+    async def mock_stream(request):
+        yield InternalResponseBlock(type=ContentBlockType.TEXT, text="Hello")
+        yield InternalResponseBlock(type=ContentBlockType.TEXT, text=" world")
+
+    with patch("aegis.runtime.router.RuntimeRouter.route_stream") as mock_route:
+        mock_route.side_effect = mock_stream
+
+        response = await auth_client.post(
+            "/v1/messages",
+            json={
+                "model": "claude-sonnet-4-20250514",
+                "messages": [{"role": "user", "content": "Hello"}],
+                "max_tokens": 100,
+                "stream": True,
+            },
+        )
+
+        assert response.status_code == 200
+        assert response.headers["content-type"].startswith("text/event-stream")
+
+        sse_text = response.text
+        assert "message_start" in sse_text
+        assert "Hello" in sse_text
+        assert " world" in sse_text
+        assert "message_stop" in sse_text
