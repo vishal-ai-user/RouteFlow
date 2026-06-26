@@ -101,3 +101,21 @@ async def test_auth_error_includes_request_id(client: AsyncClient) -> None:
     response = await client.get("/status")
     data = response.json()
     assert data["error"]["request_id"].startswith("req_")
+
+
+def test_constant_time_token_validation(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Verify that validate_token calls secrets.compare_digest for security."""
+    from unittest.mock import patch
+
+    from aegis.auth.tokens import validate_token
+    from aegis.config.settings import get_settings
+
+    monkeypatch.setenv("AEGIS_AUTH_TOKEN", "test-token-value")
+    get_settings.cache_clear()
+
+    with patch("secrets.compare_digest") as mock_compare:
+        mock_compare.return_value = True
+        validate_token("some-token")
+        mock_compare.assert_called_once()
+
+    get_settings.cache_clear()

@@ -46,6 +46,7 @@ class RequestLog(BaseModel):
     request_id: str
     model: str
     stream: bool
+    provider_id: str | None = None
     status_code: int | None = None
     latency_ms: int | None = None
     created_at: str

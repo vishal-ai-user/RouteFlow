@@ -12,6 +12,7 @@ Shutdown:
 2. (Future milestones: flush state, close DB, drain streams)
 """
 
+import time
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
@@ -25,6 +26,9 @@ from aegis.core.errors import AegisError, aegis_error_handler, generic_error_han
 from aegis.core.logging import get_logger, setup_logging
 
 logger = get_logger(__name__)
+
+# Track application startup time for uptime statistics
+START_TIME = time.time()
 
 
 @asynccontextmanager

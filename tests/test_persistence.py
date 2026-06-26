@@ -282,3 +282,55 @@ async def test_logging_repository(db_path: str) -> None:
     logs_updated = await repo.get_request_logs(10, db_path)
     assert logs_updated[0].status_code == 200
     assert logs_updated[0].latency_ms == 125
+
+
+def test_fernet_encryption_and_legacy_xor_fallback() -> None:
+    """Verify standard Fernet encryption and backward compatibility with XOR decryption."""
+    from aegis.persistence.db import decrypt_val, encrypt_val
+
+    secret_key = "test-secret-key-999"
+    raw_val = "sensitive-api-key-value"
+
+    # 1. Encrypt using new Fernet cipher
+    fernet_cipher = encrypt_val(raw_val, secret_key)
+    assert fernet_cipher != raw_val
+    assert len(fernet_cipher) > len(raw_val)
+
+    # 2. Decrypt new cipher using new decrypt_val (should succeed with Fernet)
+    decrypted_fernet = decrypt_val(fernet_cipher, secret_key)
+    assert decrypted_fernet == raw_val
+
+    # 3. Simulate legacy XOR encryption
+    import base64
+    import hashlib
+
+    key_bytes = hashlib.sha256(secret_key.encode("utf-8")).digest()
+    val_bytes = raw_val.encode("utf-8")
+    legacy_bytes = bytearray()
+    for i, b in enumerate(val_bytes):
+        key_byte = key_bytes[i % len(key_bytes)]
+        legacy_bytes.append(b ^ key_byte)
+    legacy_cipher = base64.b64encode(legacy_bytes).decode("utf-8")
+
+    # 4. Decrypt legacy cipher using decrypt_val (should trigger fallback and succeed)
+    decrypted_legacy = decrypt_val(legacy_cipher, secret_key)
+    assert decrypted_legacy == raw_val
+
+
+def test_sqlite_wal_mode_and_timeout(db_path: str) -> None:
+    """Verify SQLite WAL mode, busy timeout, and normal synchronous syncs are configured."""
+    from aegis.persistence.db import get_db_connection
+
+    # Force connection initialization to configure database parameters
+    with get_db_connection(db_path) as conn:
+        cursor = conn.cursor()
+
+        # Query journal mode
+        cursor.execute("PRAGMA journal_mode;")
+        journal_mode = cursor.fetchone()[0]
+        assert journal_mode.lower() == "wal"
+
+        # Query busy timeout (sqlite3 returns timeout in milliseconds)
+        cursor.execute("PRAGMA busy_timeout;")
+        busy_timeout = cursor.fetchone()[0]
+        assert busy_timeout == 30000

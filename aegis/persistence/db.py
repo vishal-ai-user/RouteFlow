@@ -19,7 +19,7 @@ from aegis.config.settings import get_settings
 def get_db_connection(db_path: str | None = None) -> Iterator[sqlite3.Connection]:
     """Provide a thread-safe connection context for SQLite database queries.
 
-    Enforces foreign key checks and row-to-dictionary factory configuration.
+    Enforces foreign key checks, WAL mode, synchronous normal, and row dictionary factory.
     """
     if db_path is None:
         db_path = get_settings().database_path
@@ -28,9 +28,12 @@ def get_db_connection(db_path: str | None = None) -> Iterator[sqlite3.Connection
     if db_path != ":memory:":
         os.makedirs(os.path.dirname(os.path.abspath(db_path)), exist_ok=True)
 
-    conn = sqlite3.connect(db_path)
+    conn = sqlite3.connect(db_path, timeout=30.0)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON;")
+    conn.execute("PRAGMA journal_mode = WAL;")
+    conn.execute("PRAGMA synchronous = NORMAL;")
+    conn.execute("PRAGMA busy_timeout = 30000;")
     try:
         yield conn
         conn.commit()
@@ -51,27 +54,42 @@ def get_encryption_key() -> str:
     return "aegis-default-secret-key-12345"
 
 
+def derive_fernet_key(secret_key: str) -> bytes:
+    """Derive a 32-byte urlsafe base64 key from an arbitrary secret key string."""
+    key_hash = hashlib.sha256(secret_key.encode("utf-8")).digest()
+    return base64.urlsafe_b64encode(key_hash)
+
+
 def encrypt_val(val: str, secret_key: str) -> str:
-    """Encrypt a string value using a sha256 stream-cipher XOR cipher."""
+    """Encrypt a string value using standard authenticated Fernet encryption."""
     if not val:
         return ""
-    key_bytes = hashlib.sha256(secret_key.encode("utf-8")).digest()
-    val_bytes = val.encode("utf-8")
-    encrypted = bytearray()
-    for i, b in enumerate(val_bytes):
-        key_byte = key_bytes[i % len(key_bytes)]
-        encrypted.append(b ^ key_byte)
-    return base64.b64encode(encrypted).decode("utf-8")
+    from cryptography.fernet import Fernet
+
+    fernet_key = derive_fernet_key(secret_key)
+    f = Fernet(fernet_key)
+    return f.encrypt(val.encode("utf-8")).decode("utf-8")
 
 
 def decrypt_val(encrypted_str: str, secret_key: str) -> str:
-    """Decrypt a string value using a sha256 stream-cipher XOR cipher."""
+    """Decrypt a string value using Fernet, falling back to legacy XOR if needed."""
     if not encrypted_str:
         return ""
-    key_bytes = hashlib.sha256(secret_key.encode("utf-8")).digest()
-    encrypted_bytes = base64.b64decode(encrypted_str.encode("utf-8"))
-    decrypted = bytearray()
-    for i, b in enumerate(encrypted_bytes):
-        key_byte = key_bytes[i % len(key_bytes)]
-        decrypted.append(b ^ key_byte)
-    return decrypted.decode("utf-8")
+    from cryptography.fernet import Fernet, InvalidToken
+
+    try:
+        fernet_key = derive_fernet_key(secret_key)
+        f = Fernet(fernet_key)
+        return f.decrypt(encrypted_str.encode("utf-8")).decode("utf-8")
+    except (InvalidToken, Exception):
+        # Legacy fallback: XOR decryption
+        try:
+            key_bytes = hashlib.sha256(secret_key.encode("utf-8")).digest()
+            encrypted_bytes = base64.b64decode(encrypted_str.encode("utf-8"))
+            decrypted = bytearray()
+            for i, b in enumerate(encrypted_bytes):
+                key_byte = key_bytes[i % len(key_bytes)]
+                decrypted.append(b ^ key_byte)
+            return decrypted.decode("utf-8")
+        except Exception:
+            return ""

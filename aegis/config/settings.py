@@ -43,11 +43,54 @@ class AegisSettings(BaseSettings):
     max_request_size_mb: int = 10
 
 
+# Safe whitelist of configuration keys allowed to be overridden dynamically from the database
+SETTINGS_WHITELIST = {
+    "default_model",
+    "scheduler_mode",
+    "retry_count",
+    "timeout_seconds",
+    "streaming_enabled",
+    "thinking_enabled",
+    "max_request_size_mb",
+    "log_level",
+}
+
+
 @lru_cache(maxsize=1)
 def get_settings() -> AegisSettings:
     """Return the cached application settings instance.
 
     Settings are loaded once and cached for the lifetime of the process.
+    If database tables exist, overrides them dynamically.
     Call ``get_settings.cache_clear()`` if you need to reload (e.g. in tests).
     """
-    return AegisSettings()
+    settings = AegisSettings()
+    try:
+        import sqlite3
+
+        conn = sqlite3.connect(settings.database_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute("SELECT key, value FROM settings")
+        rows = cursor.fetchall()
+        for row in rows:
+            key = row["key"]
+            val = row["value"]
+            if key in SETTINGS_WHITELIST and hasattr(settings, key):
+                current_val = getattr(settings, key)
+                field_type = type(current_val) if current_val is not None else str
+                if field_type is bool:
+                    setattr(settings, key, val.lower() in ("true", "1", "yes"))
+                else:
+                    setattr(settings, key, field_type(val))
+        conn.close()
+    except sqlite3.OperationalError:
+        # Table might not exist yet during initial startup/migrations. This is expected.
+        pass
+    except Exception as exc:
+        from aegis.core.logging import get_logger
+
+        get_logger(__name__).warning(
+            "Failed to load settings overrides from database: %s", str(exc)
+        )
+    return settings

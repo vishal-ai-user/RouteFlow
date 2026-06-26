@@ -10,9 +10,9 @@ import logging
 import sys
 from contextvars import ContextVar
 
-# Context variable for per-request ID tracking.
-# Set by gateway middleware, read by the log formatter.
+# Context variables for per-request tracing.
 request_id_var: ContextVar[str | None] = ContextVar("request_id", default=None)
+provider_id_var: ContextVar[str | None] = ContextVar("provider_id", default=None)
 
 LOG_FORMAT = "[%(asctime)s] [%(levelname)-8s] [%(request_id)s] %(name)s — %(message)s"
 DATE_FORMAT = "%Y-%m-%d %H:%M:%S"

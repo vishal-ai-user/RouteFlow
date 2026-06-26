@@ -6,6 +6,8 @@ Follows SECURITY.md §4 and ARCHITECTURE.md §6:
 - never log raw tokens
 """
 
+import secrets
+
 from aegis.config.settings import get_settings
 from aegis.core.logging import get_logger
 
@@ -29,4 +31,4 @@ def validate_token(token: str) -> bool:
         logger.warning("AEGIS_AUTH_TOKEN is not configured — auth is disabled")
         return True
 
-    return token == settings.auth_token
+    return secrets.compare_digest(token, settings.auth_token)

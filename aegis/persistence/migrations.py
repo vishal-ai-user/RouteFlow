@@ -51,6 +51,7 @@ MIGRATIONS = [
         request_id TEXT NOT NULL UNIQUE,
         model TEXT NOT NULL,
         stream INTEGER NOT NULL,
+        provider_id TEXT,
         status_code INTEGER,
         latency_ms INTEGER,
         created_at TEXT NOT NULL

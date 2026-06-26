@@ -6,6 +6,8 @@ Verifies:
 - Settings caching works
 """
 
+import pathlib
+
 import pytest
 
 from aegis.config.settings import AegisSettings, get_settings
@@ -105,3 +107,61 @@ class TestGetSettingsCache:
         first = get_settings()
         second = get_settings()
         assert first is second
+
+
+def test_settings_database_override_whitelisting(
+    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Verify that settings overrides from database respect whitelisting."""
+    import sqlite3
+
+    db_file = tmp_path / "test_overrides.db"
+
+    # 1. Setup database with whitelisted and non-whitelisted configurations
+    conn = sqlite3.connect(str(db_file))
+    conn.execute("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT, updated_at TEXT)")
+    conn.execute("INSERT INTO settings VALUES ('default_model', 'db-model', '2026-01-01')")
+    conn.execute("INSERT INTO settings VALUES ('auth_token', 'db-bypass-token', '2026-01-01')")
+    conn.commit()
+    conn.close()
+
+    # Configure database path via monkeypatch
+    monkeypatch.setenv("AEGIS_DATABASE_PATH", str(db_file))
+    get_settings.cache_clear()
+
+    # Load settings
+    settings = get_settings()
+
+    # Whitelisted should be updated
+    assert settings.default_model == "db-model"
+    # Non-whitelisted should remain default (None)
+    assert settings.auth_token is None
+    get_settings.cache_clear()
+
+
+def test_settings_database_parse_error_warning(
+    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Verify that setting values failing to parse log a warning."""
+    import sqlite3
+    from unittest.mock import patch
+
+    db_file = tmp_path / "test_warnings.db"
+
+    # Insert malformed integer value
+    conn = sqlite3.connect(str(db_file))
+    conn.execute("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT, updated_at TEXT)")
+    conn.execute("INSERT INTO settings VALUES ('retry_count', 'not-an-integer', '2026-01-01')")
+    conn.commit()
+    conn.close()
+
+    monkeypatch.setenv("AEGIS_DATABASE_PATH", str(db_file))
+    get_settings.cache_clear()
+
+    with patch("logging.Logger.warning") as mock_warning:
+        get_settings()
+        # A warning should be logged for the parse error
+        mock_warning.assert_called()
+        log_message = mock_warning.call_args[0][0]
+        assert "Failed to load settings overrides" in log_message
+    get_settings.cache_clear()

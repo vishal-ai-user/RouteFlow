@@ -8,6 +8,7 @@ Verifies:
 - Validation errors match structured error shape (API_SPEC.md §6)
 """
 
+import contextlib
 from unittest.mock import AsyncMock, patch
 
 from httpx import AsyncClient
@@ -446,3 +447,40 @@ async def test_messages_stream_success(auth_client: AsyncClient) -> None:
         assert "Hello" in sse_text
         assert " world" in sse_text
         assert "message_stop" in sse_text
+
+
+async def test_messages_stream_cancellation(auth_client: AsyncClient) -> None:
+    """POST /v1/messages stream cancellation preserves database logging with status 499."""
+    import asyncio
+
+    from aegis.core.schemas import ContentBlockType, InternalResponseBlock
+    from aegis.persistence.repositories import LogRepository
+
+    async def mock_stream_cancel(request):
+        yield InternalResponseBlock(type=ContentBlockType.TEXT, text="Hello")
+        raise asyncio.CancelledError()
+
+    with patch("aegis.runtime.router.RuntimeRouter.route_stream") as mock_route:
+        mock_route.side_effect = mock_stream_cancel
+
+        with contextlib.suppress(asyncio.CancelledError, Exception):
+            await auth_client.post(
+                "/v1/messages",
+                json={
+                    "model": "claude-sonnet-4-20250514",
+                    "messages": [{"role": "user", "content": "Hello"}],
+                    "max_tokens": 100,
+                    "stream": True,
+                },
+            )
+
+        # Give the event loop a tick to run background logging task
+        await asyncio.sleep(0.1)
+
+        # Check request status in database log
+        log_repo = LogRepository()
+        logs = await log_repo.get_request_logs(5)
+
+        # Verify that under cancellation, the background task finalized logs with status 499
+        assert len(logs) > 0
+        assert logs[0].status_code == 499

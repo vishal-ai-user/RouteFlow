@@ -65,6 +65,11 @@ class RuntimeRouter:
             member = self.scheduler.select(untried_eligible)
             tried_provider_ids.add(member.provider_id)
 
+            # Set provider_id context variable for logging
+            from aegis.core.logging import provider_id_var
+
+            provider_id_var.set(member.provider_id)
+
             # 5. Increment load counters
             self.pool.increment_active_requests(member.provider_id)
             logger.info(
@@ -131,6 +136,11 @@ class RuntimeRouter:
             # 2. Select the provider member
             member = self.scheduler.select(untried_eligible)
             tried_provider_ids.add(member.provider_id)
+
+            # Set provider_id context variable for logging
+            from aegis.core.logging import provider_id_var
+
+            provider_id_var.set(member.provider_id)
 
             # 3. Increment active requests
             self.pool.increment_active_requests(member.provider_id)

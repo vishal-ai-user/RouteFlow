@@ -107,6 +107,7 @@ async def create_message(request: CreateMessageRequest) -> Any:
             stop_reason = "end_turn"
             output_tokens = 0
             error_occurred = False
+            completed = False
             try:
                 async for block in iterator:
                     from aegis.core.schemas import ContentBlockType
@@ -123,6 +124,7 @@ async def create_message(request: CreateMessageRequest) -> Any:
                         tool_input_json = json.dumps(block.tool_input or {})
                         output_tokens += max(1, len(tool_input_json) // 4)
                     yield block
+                completed = True
             except Exception as stream_exc:
                 error_occurred = True
                 latency = int((time.perf_counter() - start_time) * 1000)
@@ -131,26 +133,56 @@ async def create_message(request: CreateMessageRequest) -> Any:
                 if isinstance(stream_exc, AegisError):
                     err_type = stream_exc.error_type.value
                     err_msg = stream_exc.message
-                await log_repo.update_request_status(
-                    request_id, status_code=500, latency_ms=latency
-                )
-                await log_repo.log_error(request_id, error_type=err_type, error_message=err_msg)
+                from aegis.core.logging import provider_id_var
+
+                provider_id = provider_id_var.get()
+
+                async def do_error_logging():
+                    try:
+                        await log_repo.update_request_status(
+                            request_id, status_code=500, latency_ms=latency, provider_id=provider_id
+                        )
+                        await log_repo.log_error(
+                            request_id, error_type=err_type, error_message=err_msg
+                        )
+                    except Exception as le:
+                        logger.error("Failed to write stream error log: %s", str(le))
+
+                import asyncio
+
+                asyncio.create_task(do_error_logging())
                 raise stream_exc
             finally:
                 if not error_occurred:
                     latency = int((time.perf_counter() - start_time) * 1000)
                     content = "".join(accumulated_text)
-                    await log_repo.update_request_status(
-                        request_id, status_code=200, latency_ms=latency
-                    )
-                    await log_repo.log_response(
-                        request_id, content=content, stop_reason=stop_reason
-                    )
-                    await log_repo.log_usage(
-                        request_id,
-                        input_tokens=estimated_input_tokens,
-                        output_tokens=output_tokens,
-                    )
+                    from aegis.core.logging import provider_id_var
+
+                    provider_id = provider_id_var.get()
+                    status_code = 200 if completed else 499
+
+                    async def do_final_logging():
+                        try:
+                            await log_repo.update_request_status(
+                                request_id,
+                                status_code=status_code,
+                                latency_ms=latency,
+                                provider_id=provider_id,
+                            )
+                            await log_repo.log_response(
+                                request_id, content=content, stop_reason=stop_reason
+                            )
+                            await log_repo.log_usage(
+                                request_id,
+                                input_tokens=estimated_input_tokens,
+                                output_tokens=output_tokens,
+                            )
+                        except Exception as le:
+                            logger.error("Failed to write final stream log: %s", str(le))
+
+                    import asyncio
+
+                    asyncio.create_task(do_final_logging())
 
         wrapped_blocks = logging_stream_wrapper(blocks_iterator)
 
@@ -167,7 +199,12 @@ async def create_message(request: CreateMessageRequest) -> Any:
 
             # Log successful response metrics
             latency = int((time.perf_counter() - start_time) * 1000)
-            await log_repo.update_request_status(request_id, status_code=200, latency_ms=latency)
+            from aegis.core.logging import provider_id_var
+
+            provider_id = provider_id_var.get()
+            await log_repo.update_request_status(
+                request_id, status_code=200, latency_ms=latency, provider_id=provider_id
+            )
 
             # Extract output text
             content_text = ""
@@ -203,8 +240,11 @@ async def create_message(request: CreateMessageRequest) -> Any:
 
                 status_code = ERROR_STATUS_CODES.get(exc.error_type, 502)
 
+            from aegis.core.logging import provider_id_var
+
+            provider_id = provider_id_var.get()
             await log_repo.update_request_status(
-                request_id, status_code=status_code, latency_ms=latency
+                request_id, status_code=status_code, latency_ms=latency, provider_id=provider_id
             )
             await log_repo.log_error(request_id, error_type=err_type, error_message=err_msg)
             raise exc
