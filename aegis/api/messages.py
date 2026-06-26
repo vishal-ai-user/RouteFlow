@@ -7,10 +7,9 @@ Endpoints:
 
 All endpoints require authentication (SECURITY.md §4).
 
-In Milestone 2, the gateway validates requests but does not forward them
-to a provider. The translator, runtime, and provider layers will be wired
-in subsequent milestones. Valid requests receive a structured "pipeline not
-ready" error so that auth and validation can be fully tested.
+The gateway validates requests and passes them through the translator
+(Milestone 3). The runtime, provider, and streaming layers will be
+wired in subsequent milestones.
 """
 
 from fastapi import APIRouter, Depends
@@ -25,7 +24,8 @@ from aegis.api.models import (
 from aegis.auth.guards import require_auth
 from aegis.config.settings import get_settings
 from aegis.core.errors import AegisError, ErrorType
-from aegis.core.logging import get_logger
+from aegis.core.logging import get_logger, request_id_var
+from aegis.translator import translate_request
 
 logger = get_logger(__name__)
 
@@ -36,11 +36,13 @@ router = APIRouter(prefix="/v1", tags=["messages"], dependencies=[Depends(requir
 async def create_message(request: CreateMessageRequest) -> dict:
     """Create a message (Claude Code-compatible).
 
-    Validates the request payload and — once the provider pipeline is ready —
-    forwards it through the translator → runtime → provider → streaming chain.
+    Validates the request payload, translates it into the internal model,
+    and — once the provider pipeline is ready — forwards it through the
+    runtime → provider → streaming chain.
 
-    In Milestone 2, returns a structured error indicating the pipeline is not
-    yet configured. This proves auth + validation work end to end.
+    In Milestone 3, returns a structured error indicating the pipeline is
+    not yet configured. This proves auth + validation + translation work
+    end to end.
     """
     logger.info(
         "Received message request: model=%s, messages=%d, stream=%s, max_tokens=%d",
@@ -50,8 +52,19 @@ async def create_message(request: CreateMessageRequest) -> dict:
         request.max_tokens,
     )
 
-    # Gateway validated the request. The translator/runtime/provider pipeline
-    # will be connected in Milestones 3–6.
+    # Translate the gateway request into an internal request.
+    request_id = request_id_var.get() or ""
+    internal_request = translate_request(request, request_id=request_id)
+
+    logger.info(
+        "Translated request: model=%s, messages=%d, system_blocks=%d, stream=%s",
+        internal_request.model,
+        len(internal_request.messages),
+        len(internal_request.system),
+        internal_request.stream,
+    )
+
+    # The runtime/provider pipeline will be connected in Milestones 4–6.
     raise AegisError(
         ErrorType.PROVIDER_ERROR,
         "Provider pipeline is not configured. "
@@ -108,3 +121,4 @@ async def list_models() -> ModelsResponse:
             ModelInfo(id=settings.default_model),
         ]
     )
+
