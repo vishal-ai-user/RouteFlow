@@ -19,11 +19,14 @@ from httpx import AsyncClient
 
 async def test_messages_requires_auth(client: AsyncClient) -> None:
     """POST /v1/messages without auth should return 401."""
-    response = await client.post("/v1/messages", json={
-        "model": "claude-sonnet-4-20250514",
-        "messages": [{"role": "user", "content": "Hello"}],
-        "max_tokens": 100,
-    })
+    response = await client.post(
+        "/v1/messages",
+        json={
+            "model": "claude-sonnet-4-20250514",
+            "messages": [{"role": "user", "content": "Hello"}],
+            "max_tokens": 100,
+        },
+    )
     assert response.status_code == 401
 
 
@@ -34,11 +37,14 @@ async def test_messages_requires_auth(client: AsyncClient) -> None:
 
 async def test_messages_valid_request_accepted(auth_client: AsyncClient) -> None:
     """A valid request should pass validation (returns 502 since pipeline not ready)."""
-    response = await auth_client.post("/v1/messages", json={
-        "model": "claude-sonnet-4-20250514",
-        "messages": [{"role": "user", "content": "Hello"}],
-        "max_tokens": 100,
-    })
+    response = await auth_client.post(
+        "/v1/messages",
+        json={
+            "model": "claude-sonnet-4-20250514",
+            "messages": [{"role": "user", "content": "Hello"}],
+            "max_tokens": 100,
+        },
+    )
     # 502 = provider_error because the pipeline isn't wired yet.
     # This proves auth + validation passed successfully.
     assert response.status_code == 502
@@ -48,23 +54,29 @@ async def test_messages_valid_request_accepted(auth_client: AsyncClient) -> None
 
 async def test_messages_valid_with_system_prompt(auth_client: AsyncClient) -> None:
     """Request with system prompt should pass validation."""
-    response = await auth_client.post("/v1/messages", json={
-        "model": "claude-sonnet-4-20250514",
-        "messages": [{"role": "user", "content": "Hello"}],
-        "max_tokens": 200,
-        "system": "You are a helpful assistant.",
-    })
+    response = await auth_client.post(
+        "/v1/messages",
+        json={
+            "model": "claude-sonnet-4-20250514",
+            "messages": [{"role": "user", "content": "Hello"}],
+            "max_tokens": 200,
+            "system": "You are a helpful assistant.",
+        },
+    )
     assert response.status_code == 502
 
 
 async def test_messages_valid_with_stream_flag(auth_client: AsyncClient) -> None:
     """Request with stream=true should pass validation."""
-    response = await auth_client.post("/v1/messages", json={
-        "model": "claude-sonnet-4-20250514",
-        "messages": [{"role": "user", "content": "Hello"}],
-        "max_tokens": 100,
-        "stream": True,
-    })
+    response = await auth_client.post(
+        "/v1/messages",
+        json={
+            "model": "claude-sonnet-4-20250514",
+            "messages": [{"role": "user", "content": "Hello"}],
+            "max_tokens": 100,
+            "stream": True,
+        },
+    )
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/event-stream")
     sse_text = response.text
@@ -75,46 +87,55 @@ async def test_messages_valid_with_stream_flag(auth_client: AsyncClient) -> None
 
 async def test_messages_valid_with_tools(auth_client: AsyncClient) -> None:
     """Request with tool definitions should pass validation."""
-    response = await auth_client.post("/v1/messages", json={
-        "model": "claude-sonnet-4-20250514",
-        "messages": [{"role": "user", "content": "What's the weather?"}],
-        "max_tokens": 100,
-        "tools": [
-            {
-                "name": "get_weather",
-                "description": "Get current weather",
-                "input_schema": {"type": "object", "properties": {}},
-            }
-        ],
-    })
+    response = await auth_client.post(
+        "/v1/messages",
+        json={
+            "model": "claude-sonnet-4-20250514",
+            "messages": [{"role": "user", "content": "What's the weather?"}],
+            "max_tokens": 100,
+            "tools": [
+                {
+                    "name": "get_weather",
+                    "description": "Get current weather",
+                    "input_schema": {"type": "object", "properties": {}},
+                }
+            ],
+        },
+    )
     assert response.status_code == 502
 
 
 async def test_messages_valid_with_thinking(auth_client: AsyncClient) -> None:
     """Request with thinking config should pass validation."""
-    response = await auth_client.post("/v1/messages", json={
-        "model": "claude-sonnet-4-20250514",
-        "messages": [{"role": "user", "content": "Think about this"}],
-        "max_tokens": 1000,
-        "thinking": {"type": "enabled", "budget_tokens": 500},
-    })
+    response = await auth_client.post(
+        "/v1/messages",
+        json={
+            "model": "claude-sonnet-4-20250514",
+            "messages": [{"role": "user", "content": "Think about this"}],
+            "max_tokens": 1000,
+            "thinking": {"type": "enabled", "budget_tokens": 500},
+        },
+    )
     assert response.status_code == 502
 
 
 async def test_messages_valid_with_content_blocks(auth_client: AsyncClient) -> None:
     """Request with content block list should pass validation."""
-    response = await auth_client.post("/v1/messages", json={
-        "model": "claude-sonnet-4-20250514",
-        "messages": [
-            {
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": "Hello world"},
-                ],
-            }
-        ],
-        "max_tokens": 100,
-    })
+    response = await auth_client.post(
+        "/v1/messages",
+        json={
+            "model": "claude-sonnet-4-20250514",
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "Hello world"},
+                    ],
+                }
+            ],
+            "max_tokens": 100,
+        },
+    )
     assert response.status_code == 502
 
 
@@ -125,69 +146,90 @@ async def test_messages_valid_with_content_blocks(auth_client: AsyncClient) -> N
 
 async def test_messages_missing_model_returns_422(auth_client: AsyncClient) -> None:
     """Missing required 'model' field should return 422."""
-    response = await auth_client.post("/v1/messages", json={
-        "messages": [{"role": "user", "content": "Hello"}],
-        "max_tokens": 100,
-    })
+    response = await auth_client.post(
+        "/v1/messages",
+        json={
+            "messages": [{"role": "user", "content": "Hello"}],
+            "max_tokens": 100,
+        },
+    )
     assert response.status_code == 422
 
 
 async def test_messages_missing_messages_returns_422(auth_client: AsyncClient) -> None:
     """Missing required 'messages' field should return 422."""
-    response = await auth_client.post("/v1/messages", json={
-        "model": "claude-sonnet-4-20250514",
-        "max_tokens": 100,
-    })
+    response = await auth_client.post(
+        "/v1/messages",
+        json={
+            "model": "claude-sonnet-4-20250514",
+            "max_tokens": 100,
+        },
+    )
     assert response.status_code == 422
 
 
 async def test_messages_empty_messages_returns_422(auth_client: AsyncClient) -> None:
     """Empty messages array should return 422 (min_length=1)."""
-    response = await auth_client.post("/v1/messages", json={
-        "model": "claude-sonnet-4-20250514",
-        "messages": [],
-        "max_tokens": 100,
-    })
+    response = await auth_client.post(
+        "/v1/messages",
+        json={
+            "model": "claude-sonnet-4-20250514",
+            "messages": [],
+            "max_tokens": 100,
+        },
+    )
     assert response.status_code == 422
 
 
 async def test_messages_missing_max_tokens_returns_422(auth_client: AsyncClient) -> None:
     """Missing required 'max_tokens' field should return 422."""
-    response = await auth_client.post("/v1/messages", json={
-        "model": "claude-sonnet-4-20250514",
-        "messages": [{"role": "user", "content": "Hello"}],
-    })
+    response = await auth_client.post(
+        "/v1/messages",
+        json={
+            "model": "claude-sonnet-4-20250514",
+            "messages": [{"role": "user", "content": "Hello"}],
+        },
+    )
     assert response.status_code == 422
 
 
 async def test_messages_zero_max_tokens_returns_422(auth_client: AsyncClient) -> None:
     """max_tokens=0 should return 422 (gt=0)."""
-    response = await auth_client.post("/v1/messages", json={
-        "model": "claude-sonnet-4-20250514",
-        "messages": [{"role": "user", "content": "Hello"}],
-        "max_tokens": 0,
-    })
+    response = await auth_client.post(
+        "/v1/messages",
+        json={
+            "model": "claude-sonnet-4-20250514",
+            "messages": [{"role": "user", "content": "Hello"}],
+            "max_tokens": 0,
+        },
+    )
     assert response.status_code == 422
 
 
 async def test_messages_negative_max_tokens_returns_422(auth_client: AsyncClient) -> None:
     """max_tokens=-1 should return 422."""
-    response = await auth_client.post("/v1/messages", json={
-        "model": "claude-sonnet-4-20250514",
-        "messages": [{"role": "user", "content": "Hello"}],
-        "max_tokens": -1,
-    })
+    response = await auth_client.post(
+        "/v1/messages",
+        json={
+            "model": "claude-sonnet-4-20250514",
+            "messages": [{"role": "user", "content": "Hello"}],
+            "max_tokens": -1,
+        },
+    )
     assert response.status_code == 422
 
 
 async def test_messages_invalid_temperature_returns_422(auth_client: AsyncClient) -> None:
     """temperature > 1.0 should return 422."""
-    response = await auth_client.post("/v1/messages", json={
-        "model": "claude-sonnet-4-20250514",
-        "messages": [{"role": "user", "content": "Hello"}],
-        "max_tokens": 100,
-        "temperature": 2.0,
-    })
+    response = await auth_client.post(
+        "/v1/messages",
+        json={
+            "model": "claude-sonnet-4-20250514",
+            "messages": [{"role": "user", "content": "Hello"}],
+            "max_tokens": 100,
+            "temperature": 2.0,
+        },
+    )
     assert response.status_code == 422
 
 
@@ -203,11 +245,14 @@ async def test_messages_invalid_json_returns_422(auth_client: AsyncClient) -> No
 
 async def test_messages_error_includes_request_id(auth_client: AsyncClient) -> None:
     """Pipeline error should include request_id."""
-    response = await auth_client.post("/v1/messages", json={
-        "model": "claude-sonnet-4-20250514",
-        "messages": [{"role": "user", "content": "Hello"}],
-        "max_tokens": 100,
-    })
+    response = await auth_client.post(
+        "/v1/messages",
+        json={
+            "model": "claude-sonnet-4-20250514",
+            "messages": [{"role": "user", "content": "Hello"}],
+            "max_tokens": 100,
+        },
+    )
     data = response.json()
     assert data["error"]["request_id"].startswith("req_")
 
@@ -219,28 +264,37 @@ async def test_messages_error_includes_request_id(auth_client: AsyncClient) -> N
 
 async def test_count_tokens_requires_auth(client: AsyncClient) -> None:
     """POST /v1/messages/count_tokens without auth should return 401."""
-    response = await client.post("/v1/messages/count_tokens", json={
-        "model": "claude-sonnet-4-20250514",
-        "messages": [{"role": "user", "content": "Hello"}],
-    })
+    response = await client.post(
+        "/v1/messages/count_tokens",
+        json={
+            "model": "claude-sonnet-4-20250514",
+            "messages": [{"role": "user", "content": "Hello"}],
+        },
+    )
     assert response.status_code == 401
 
 
 async def test_count_tokens_returns_200(auth_client: AsyncClient) -> None:
     """Valid count_tokens request should return 200."""
-    response = await auth_client.post("/v1/messages/count_tokens", json={
-        "model": "claude-sonnet-4-20250514",
-        "messages": [{"role": "user", "content": "Hello world"}],
-    })
+    response = await auth_client.post(
+        "/v1/messages/count_tokens",
+        json={
+            "model": "claude-sonnet-4-20250514",
+            "messages": [{"role": "user", "content": "Hello world"}],
+        },
+    )
     assert response.status_code == 200
 
 
 async def test_count_tokens_response_shape(auth_client: AsyncClient) -> None:
     """count_tokens response must have input_tokens field."""
-    response = await auth_client.post("/v1/messages/count_tokens", json={
-        "model": "claude-sonnet-4-20250514",
-        "messages": [{"role": "user", "content": "Hello world"}],
-    })
+    response = await auth_client.post(
+        "/v1/messages/count_tokens",
+        json={
+            "model": "claude-sonnet-4-20250514",
+            "messages": [{"role": "user", "content": "Hello world"}],
+        },
+    )
     data = response.json()
     assert "input_tokens" in data
     assert isinstance(data["input_tokens"], int)
@@ -249,24 +303,33 @@ async def test_count_tokens_response_shape(auth_client: AsyncClient) -> None:
 
 async def test_count_tokens_with_system_prompt(auth_client: AsyncClient) -> None:
     """count_tokens should include system prompt in count."""
-    response_no_sys = await auth_client.post("/v1/messages/count_tokens", json={
-        "model": "claude-sonnet-4-20250514",
-        "messages": [{"role": "user", "content": "Hi"}],
-    })
-    response_with_sys = await auth_client.post("/v1/messages/count_tokens", json={
-        "model": "claude-sonnet-4-20250514",
-        "messages": [{"role": "user", "content": "Hi"}],
-        "system": "You are a very detailed assistant with lots of instructions.",
-    })
+    response_no_sys = await auth_client.post(
+        "/v1/messages/count_tokens",
+        json={
+            "model": "claude-sonnet-4-20250514",
+            "messages": [{"role": "user", "content": "Hi"}],
+        },
+    )
+    response_with_sys = await auth_client.post(
+        "/v1/messages/count_tokens",
+        json={
+            "model": "claude-sonnet-4-20250514",
+            "messages": [{"role": "user", "content": "Hi"}],
+            "system": "You are a very detailed assistant with lots of instructions.",
+        },
+    )
     # System prompt should increase the token count.
     assert response_with_sys.json()["input_tokens"] > response_no_sys.json()["input_tokens"]
 
 
 async def test_count_tokens_missing_messages_returns_422(auth_client: AsyncClient) -> None:
     """count_tokens with missing messages should return 422."""
-    response = await auth_client.post("/v1/messages/count_tokens", json={
-        "model": "claude-sonnet-4-20250514",
-    })
+    response = await auth_client.post(
+        "/v1/messages/count_tokens",
+        json={
+            "model": "claude-sonnet-4-20250514",
+        },
+    )
     assert response.status_code == 422
 
 
@@ -335,9 +398,7 @@ async def test_messages_non_stream_success(auth_client: AsyncClient) -> None:
         usage=InternalUsage(input_tokens=10, output_tokens=5),
     )
 
-    with patch(
-        "aegis.runtime.router.RuntimeRouter.route", new_callable=AsyncMock
-    ) as mock_route:
+    with patch("aegis.runtime.router.RuntimeRouter.route", new_callable=AsyncMock) as mock_route:
         mock_route.return_value = mock_res
 
         response = await auth_client.post(

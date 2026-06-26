@@ -43,10 +43,7 @@ def translate_response(internal_response: InternalResponse) -> dict:
         "id": internal_response.id,
         "type": "message",
         "role": internal_response.role,
-        "content": [
-            _format_content_block(block)
-            for block in internal_response.content
-        ],
+        "content": [_format_content_block(block) for block in internal_response.content],
         "model": internal_response.model,
         "stop_reason": internal_response.stop_reason.value,
         "usage": _format_usage(internal_response.usage),

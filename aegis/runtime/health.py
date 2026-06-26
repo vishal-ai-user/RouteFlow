@@ -30,6 +30,4 @@ def handle_provider_failure(
 
     if member.recent_failure_count >= failure_threshold:
         member.healthy = False
-        member.cooldown_expiry = datetime.now() + timedelta(
-            seconds=cooldown_duration_seconds
-        )
+        member.cooldown_expiry = datetime.now() + timedelta(seconds=cooldown_duration_seconds)

@@ -108,9 +108,7 @@ class RuntimeRouter:
                 # Not retryable or retry count exceeded: propagate
                 raise
 
-    async def route_stream(
-        self, request: InternalRequest
-    ) -> AsyncIterator[InternalResponseBlock]:
+    async def route_stream(self, request: InternalRequest) -> AsyncIterator[InternalResponseBlock]:
         """Route a streaming request to an eligible provider.
 
         Failover is only supported at the connection level (before yielding chunks).

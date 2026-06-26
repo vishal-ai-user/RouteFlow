@@ -1,5 +1,7 @@
 """Shared test fixtures for the AEGIS test suite."""
 
+import pathlib
+
 import pytest
 from httpx import ASGITransport, AsyncClient
 
@@ -11,10 +13,18 @@ TEST_AUTH_TOKEN = "test-aegis-secret-token"
 
 
 @pytest.fixture
-def app(monkeypatch: pytest.MonkeyPatch):
+def app(monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path):
     """Create a fresh AEGIS app with a known auth token configured."""
+    test_db = tmp_path / "test_aegis.db"
     monkeypatch.setenv("AEGIS_AUTH_TOKEN", TEST_AUTH_TOKEN)
+    monkeypatch.setenv("AEGIS_DATABASE_PATH", str(test_db))
     get_settings.cache_clear()
+
+    # Run database migrations for the test database
+    from aegis.persistence.migrations import run_migrations
+
+    run_migrations(str(test_db))
+
     yield create_app()
     get_settings.cache_clear()
 
@@ -32,7 +42,5 @@ async def auth_client(app):
     """Async HTTP client bound to the test app, WITH valid auth headers."""
     transport = ASGITransport(app=app)
     headers = {"Authorization": f"Bearer {TEST_AUTH_TOKEN}"}
-    async with AsyncClient(
-        transport=transport, base_url="http://test", headers=headers
-    ) as ac:
+    async with AsyncClient(transport=transport, base_url="http://test", headers=headers) as ac:
         yield ac

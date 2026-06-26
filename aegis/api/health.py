@@ -50,4 +50,3 @@ async def status() -> dict:
             "scheduler": "health-first",
         },
     }
-

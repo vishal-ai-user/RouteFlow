@@ -53,9 +53,7 @@ class BaseProvider(ABC):
         pass
 
     @abstractmethod
-    def complete_stream(
-        self, request: InternalRequest
-    ) -> AsyncIterator[InternalResponseBlock]:
+    def complete_stream(self, request: InternalRequest) -> AsyncIterator[InternalResponseBlock]:
         """Execute a streaming completion request.
 
         Args:

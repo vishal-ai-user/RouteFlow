@@ -12,6 +12,7 @@ The gateway validates requests and passes them through the translator
 wired in subsequent milestones.
 """
 
+import time
 import uuid
 from typing import Any
 
@@ -26,6 +27,7 @@ from aegis.api.models import (
 )
 from aegis.auth.guards import require_auth
 from aegis.config.settings import get_settings
+from aegis.core.errors import AegisError
 from aegis.core.logging import get_logger, request_id_var
 from aegis.providers.pool import get_global_pool
 from aegis.runtime.router import RuntimeRouter
@@ -55,7 +57,7 @@ async def create_message(request: CreateMessageRequest) -> Any:
     )
 
     # Translate the gateway request into an internal request.
-    request_id = request_id_var.get() or ""
+    request_id = request_id_var.get() or f"req_{uuid.uuid4().hex[:16]}"
     internal_request = translate_request(request, request_id=request_id)
 
     logger.info(
@@ -65,6 +67,15 @@ async def create_message(request: CreateMessageRequest) -> Any:
         len(internal_request.system),
         internal_request.stream,
     )
+
+    # Initialize persistence repository
+    from aegis.persistence.repositories import LogRepository
+
+    log_repo = LogRepository()
+
+    # Log incoming request metadata in DB
+    await log_repo.log_request(request_id=request_id, model=request.model, stream=request.stream)
+    start_time = time.perf_counter()
 
     # Initialize pool, scheduler, and runtime router
     pool = get_global_pool()
@@ -89,16 +100,114 @@ async def create_message(request: CreateMessageRequest) -> Any:
         # Route streaming request
         blocks_iterator = router_instance.route_stream(internal_request)
         message_id = f"msg_{uuid.uuid4().hex[:16]}"
+
+        # Define logging stream wrapper to intercept tokens, responses, and errors
+        async def logging_stream_wrapper(iterator):
+            accumulated_text = []
+            stop_reason = "end_turn"
+            output_tokens = 0
+            error_occurred = False
+            try:
+                async for block in iterator:
+                    from aegis.core.schemas import ContentBlockType
+
+                    if block.type == ContentBlockType.TEXT and block.text:
+                        accumulated_text.append(block.text)
+                        output_tokens += max(1, len(block.text) // 4)
+                    elif block.type == ContentBlockType.THINKING and block.thinking_text:
+                        output_tokens += max(1, len(block.thinking_text) // 4)
+                    elif block.type == ContentBlockType.TOOL_USE:
+                        stop_reason = "tool_use"
+                        import json
+
+                        tool_input_json = json.dumps(block.tool_input or {})
+                        output_tokens += max(1, len(tool_input_json) // 4)
+                    yield block
+            except Exception as stream_exc:
+                error_occurred = True
+                latency = int((time.perf_counter() - start_time) * 1000)
+                err_type = "provider_error"
+                err_msg = str(stream_exc)
+                if isinstance(stream_exc, AegisError):
+                    err_type = stream_exc.error_type.value
+                    err_msg = stream_exc.message
+                await log_repo.update_request_status(
+                    request_id, status_code=500, latency_ms=latency
+                )
+                await log_repo.log_error(request_id, error_type=err_type, error_message=err_msg)
+                raise stream_exc
+            finally:
+                if not error_occurred:
+                    latency = int((time.perf_counter() - start_time) * 1000)
+                    content = "".join(accumulated_text)
+                    await log_repo.update_request_status(
+                        request_id, status_code=200, latency_ms=latency
+                    )
+                    await log_repo.log_response(
+                        request_id, content=content, stop_reason=stop_reason
+                    )
+                    await log_repo.log_usage(
+                        request_id,
+                        input_tokens=estimated_input_tokens,
+                        output_tokens=output_tokens,
+                    )
+
+        wrapped_blocks = logging_stream_wrapper(blocks_iterator)
+
         return sse_streaming_response(
-            blocks_iterator=blocks_iterator,
+            blocks_iterator=wrapped_blocks,
             message_id=message_id,
             model=request.model,
             input_tokens=estimated_input_tokens,
         )
     else:
-        # Route non-streaming request
-        internal_response = await router_instance.route(internal_request)
-        return translate_response(internal_response)
+        try:
+            # Route non-streaming request
+            internal_response = await router_instance.route(internal_request)
+
+            # Log successful response metrics
+            latency = int((time.perf_counter() - start_time) * 1000)
+            await log_repo.update_request_status(request_id, status_code=200, latency_ms=latency)
+
+            # Extract output text
+            content_text = ""
+            if internal_response.content:
+                content_text = "".join(
+                    block.text for block in internal_response.content if block.text
+                )
+
+            # Save response details and token counts
+            stop_reason_val = (
+                internal_response.stop_reason.value if internal_response.stop_reason else "end_turn"
+            )
+            await log_repo.log_response(
+                request_id, content=content_text, stop_reason=stop_reason_val
+            )
+            await log_repo.log_usage(
+                request_id,
+                input_tokens=internal_response.usage.input_tokens,
+                output_tokens=internal_response.usage.output_tokens,
+            )
+
+            return translate_response(internal_response)
+        except Exception as exc:
+            # Log error conditions
+            latency = int((time.perf_counter() - start_time) * 1000)
+            err_type = "provider_error"
+            err_msg = str(exc)
+            status_code = 502
+            if isinstance(exc, AegisError):
+                err_type = exc.error_type.value
+                err_msg = exc.message
+                from aegis.core.errors import ERROR_STATUS_CODES
+
+                status_code = ERROR_STATUS_CODES.get(exc.error_type, 502)
+
+            await log_repo.update_request_status(
+                request_id, status_code=status_code, latency_ms=latency
+            )
+            await log_repo.log_error(request_id, error_type=err_type, error_message=err_msg)
+            raise exc
 
 
 @router.post("/messages/count_tokens")
@@ -150,4 +259,3 @@ async def list_models() -> ModelsResponse:
             ModelInfo(id=settings.default_model),
         ]
     )
-

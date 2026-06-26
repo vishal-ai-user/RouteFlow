@@ -260,11 +260,13 @@ class NvidiaProvider(BaseProvider):
                         if block.type == ContentBlockType.TEXT and block.text:
                             messages.append({"role": "user", "content": block.text})
                         elif block.type == ContentBlockType.TOOL_RESULT:
-                            messages.append({
-                                "role": "tool",
-                                "tool_call_id": block.tool_result_id or "",
-                                "content": block.tool_result_content or "",
-                            })
+                            messages.append(
+                                {
+                                    "role": "tool",
+                                    "tool_call_id": block.tool_result_id or "",
+                                    "content": block.tool_result_content or "",
+                                }
+                            )
                 else:
                     # Simple text message content consolidation
                     user_text = "\n".join(
@@ -277,14 +279,16 @@ class NvidiaProvider(BaseProvider):
                 tool_calls = []
                 for block in msg.content:
                     if block.type == ContentBlockType.TOOL_USE:
-                        tool_calls.append({
-                            "id": block.tool_use_id or "",
-                            "type": "function",
-                            "function": {
-                                "name": block.tool_name or "",
-                                "arguments": json.dumps(block.tool_input or {}),
-                            },
-                        })
+                        tool_calls.append(
+                            {
+                                "id": block.tool_use_id or "",
+                                "type": "function",
+                                "function": {
+                                    "name": block.tool_name or "",
+                                    "arguments": json.dumps(block.tool_input or {}),
+                                },
+                            }
+                        )
 
                 # Combine text and thinking blocks (wrapped in <think> tags)
                 content_parts = []
@@ -324,14 +328,16 @@ class NvidiaProvider(BaseProvider):
         if request.tools:
             payload_tools = []
             for tool in request.tools:
-                payload_tools.append({
-                    "type": "function",
-                    "function": {
-                        "name": tool.name,
-                        "description": tool.description or "",
-                        "parameters": tool.input_schema,
-                    },
-                })
+                payload_tools.append(
+                    {
+                        "type": "function",
+                        "function": {
+                            "name": tool.name,
+                            "description": tool.description or "",
+                            "parameters": tool.input_schema,
+                        },
+                    }
+                )
             payload["tools"] = payload_tools
 
             # Tool choice mapping

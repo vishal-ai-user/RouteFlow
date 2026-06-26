@@ -366,9 +366,7 @@ class TestNvidiaResponseDeserialization:
 
     def test_stop_reason_mappings(self) -> None:
         provider = NvidiaProvider("test", "k", "https://api")
-        data = {
-            "choices": [{"message": {"role": "assistant"}, "finish_reason": "length"}]
-        }
+        data = {"choices": [{"message": {"role": "assistant"}, "finish_reason": "length"}]}
         assert provider.deserialize_response(data).stop_reason == StopReason.MAX_TOKENS
 
         data["choices"][0]["finish_reason"] = "stop_sequence"
@@ -545,8 +543,7 @@ class TestNvidiaProviderHttpCalls:
         # Mock stream lines
         async def mock_iter_lines() -> AsyncIterator[str]:
             yield (
-                'data: {"choices": [{"delta": '
-                '{"reasoning_content": "Thinking about answer."}}]}'
+                'data: {"choices": [{"delta": {"reasoning_content": "Thinking about answer."}}]}'
             )
             yield 'data: {"choices": [{"delta": {"content": "Hello"}}]}'
             yield 'data: {"choices": [{"delta": {"content": " world!"}}]}'

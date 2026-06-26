@@ -41,9 +41,7 @@ class TestValidateToken:
         assert validate_token("") is False
         get_settings.cache_clear()
 
-    def test_auth_disabled_when_no_token_configured(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_auth_disabled_when_no_token_configured(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """When AEGIS_AUTH_TOKEN is not set, all tokens should be accepted."""
         monkeypatch.delenv("AEGIS_AUTH_TOKEN", raising=False)
         get_settings.cache_clear()
@@ -74,17 +72,13 @@ async def test_missing_auth_error_shape(client: AsyncClient) -> None:
 
 async def test_invalid_token_returns_401(client: AsyncClient) -> None:
     """Request with wrong bearer token should get 401."""
-    response = await client.get(
-        "/status", headers={"Authorization": "Bearer wrong-token"}
-    )
+    response = await client.get("/status", headers={"Authorization": "Bearer wrong-token"})
     assert response.status_code == 401
 
 
 async def test_invalid_token_error_message(client: AsyncClient) -> None:
     """Invalid token error should have a clear message."""
-    response = await client.get(
-        "/status", headers={"Authorization": "Bearer wrong-token"}
-    )
+    response = await client.get("/status", headers={"Authorization": "Bearer wrong-token"})
     data = response.json()
     assert data["error"]["type"] == "unauthorized"
     assert "invalid" in data["error"]["message"].lower()
@@ -98,9 +92,7 @@ async def test_valid_token_allows_access(auth_client: AsyncClient) -> None:
 
 async def test_malformed_auth_header_returns_401(client: AsyncClient) -> None:
     """Non-Bearer auth scheme should get 401."""
-    response = await client.get(
-        "/status", headers={"Authorization": "Basic dXNlcjpwYXNz"}
-    )
+    response = await client.get("/status", headers={"Authorization": "Basic dXNlcjpwYXNz"})
     assert response.status_code == 401
 
 

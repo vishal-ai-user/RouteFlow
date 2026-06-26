@@ -40,6 +40,15 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     logger.info("Scheduler mode: %s", settings.scheduler_mode)
     logger.info("Streaming enabled: %s", settings.streaming_enabled)
 
+    # Initialize SQLite database
+    from aegis.persistence.migrations import run_migrations
+
+    try:
+        run_migrations()
+    except Exception as e:
+        logger.critical("Database migrations failed to run at startup: %s", str(e))
+        raise e
+
     yield
 
     # --- Shutdown ---

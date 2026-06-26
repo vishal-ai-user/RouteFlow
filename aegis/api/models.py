@@ -79,12 +79,8 @@ class CreateMessageRequest(BaseModel):
         default=None, ge=0.0, le=1.0, description="Sampling temperature"
     )
     stream: bool = Field(default=False, description="Enable SSE streaming")
-    tools: list[ToolDefinition] | None = Field(
-        default=None, description="Tool definitions"
-    )
-    tool_choice: dict | None = Field(
-        default=None, description="Tool choice policy"
-    )
+    tools: list[ToolDefinition] | None = Field(default=None, description="Tool definitions")
+    tool_choice: dict | None = Field(default=None, description="Tool choice policy")
     thinking: ThinkingConfig | None = Field(
         default=None, description="Extended thinking configuration"
     )
@@ -99,9 +95,7 @@ class CountTokensRequest(BaseModel):
     """Request body for POST /v1/messages/count_tokens."""
 
     model: str = Field(..., description="Model identifier")
-    messages: list[Message] = Field(
-        ..., min_length=1, description="Messages to count tokens for"
-    )
+    messages: list[Message] = Field(..., min_length=1, description="Messages to count tokens for")
     system: str | list[dict] | None = None
 
 

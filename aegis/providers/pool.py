@@ -173,7 +173,9 @@ def get_global_pool() -> ProviderPool:
     if not pool._members:
         single_key = os.environ.get("AEGIS_NVIDIA_API_KEY")
         if single_key:
-            base_url = os.environ.get("AEGIS_NVIDIA_BASE_URL") or "https://integrate.api.nvidia.com/v1"
+            base_url = (
+                os.environ.get("AEGIS_NVIDIA_BASE_URL") or "https://integrate.api.nvidia.com/v1"
+            )
             provider = NvidiaProvider(
                 name="default-nvidia",
                 api_key=single_key,
@@ -186,6 +188,50 @@ def get_global_pool() -> ProviderPool:
                 provider=provider,
             )
             pool.register_provider(member)
+
+    # Load additional provider records from SQLite database (Milestone 7)
+    try:
+        import sqlite3
+
+        from aegis.persistence.db import decrypt_val, get_db_connection, get_encryption_key
+
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT provider_id, display_name, api_key_encrypted, base_url, enabled
+                FROM provider_records
+                """
+            )
+            rows = cursor.fetchall()
+            for row in rows:
+                p_id = row["provider_id"]
+                if p_id in pool._members:
+                    continue
+
+                encryption_key = get_encryption_key()
+                api_key = decrypt_val(row["api_key_encrypted"], encryption_key)
+
+                provider = NvidiaProvider(
+                    name=row["display_name"],
+                    api_key=api_key,
+                    base_url=row["base_url"],
+                    timeout_seconds=float(settings.timeout_seconds),
+                )
+                member = PoolMember(
+                    provider_id=p_id,
+                    display_name=row["display_name"],
+                    provider=provider,
+                    enabled=bool(row["enabled"]),
+                )
+                pool.register_provider(member)
+    except sqlite3.OperationalError:
+        # Table might not exist yet if database is being initialized or in tests
+        pass
+    except Exception as exc:
+        from aegis.core.logging import get_logger
+
+        get_logger(__name__).warning("Failed to load providers from database: %s", str(exc))
 
     _global_pool = pool
     return pool

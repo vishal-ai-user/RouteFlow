@@ -26,9 +26,7 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
     2. Returned in the ``X-Request-ID`` response header.
     """
 
-    async def dispatch(
-        self, request: Request, call_next: RequestResponseEndpoint
-    ) -> Response:
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         request_id = f"{REQUEST_ID_PREFIX}{uuid.uuid4().hex[:12]}"
         request_id_var.set(request_id)
 
