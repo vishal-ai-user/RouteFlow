@@ -518,7 +518,8 @@ class LogRepository:
             cursor = conn.cursor()
             cursor.execute(
                 """
-                SELECT id, request_id, model, stream, provider_id, status_code, latency_ms, created_at
+                SELECT id, request_id, model, stream, provider_id,
+                       status_code, latency_ms, created_at
                 FROM request_logs
                 ORDER BY id DESC
                 LIMIT ?

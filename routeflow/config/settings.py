@@ -4,7 +4,6 @@ All settings are loaded from environment variables prefixed with ROUTEFLOW_.
 See ENVIRONMENT_REFERENCE.md for the full list of supported variables.
 """
 
-import os
 import sys
 from functools import lru_cache
 

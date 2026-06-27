@@ -11,7 +11,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING
 
-from routeflow.core.errors import RouteFlowError, ErrorType
+from routeflow.core.errors import ErrorType, RouteFlowError
 from routeflow.core.logging import get_logger
 from routeflow.runtime.health import handle_provider_failure, handle_provider_success
 from routeflow.runtime.retry import is_retryable_error

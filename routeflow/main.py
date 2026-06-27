@@ -22,7 +22,7 @@ from routeflow import __version__
 from routeflow.api.middleware import RequestIdMiddleware
 from routeflow.api.router import router as api_router
 from routeflow.config.settings import get_settings
-from routeflow.core.errors import RouteFlowError, routeflow_error_handler, generic_error_handler
+from routeflow.core.errors import RouteFlowError, generic_error_handler, routeflow_error_handler
 from routeflow.core.logging import get_logger, setup_logging
 
 logger = get_logger(__name__)

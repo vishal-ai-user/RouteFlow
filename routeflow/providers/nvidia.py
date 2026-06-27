@@ -16,7 +16,7 @@ from typing import Any
 
 import httpx
 
-from routeflow.core.errors import RouteFlowError, ErrorType
+from routeflow.core.errors import ErrorType, RouteFlowError
 from routeflow.core.logging import get_logger
 from routeflow.core.schemas import (
     ContentBlockType,
@@ -71,7 +71,8 @@ class NvidiaProvider(BaseProvider):
                 response = await client.post(url, json=payload, headers=headers)
                 try:
                     logger.debug("HTTP status code: %d", response.status_code)
-                    logger.debug("Response headers: %s", json.dumps(dict(response.headers), indent=2))
+                    headers_dict = dict(response.headers)
+                    logger.debug("Response headers: %s", json.dumps(headers_dict, indent=2))
                     logger.debug("Raw response body: %s", response.text)
                 except Exception:
                     pass
@@ -156,77 +157,84 @@ class NvidiaProvider(BaseProvider):
             logger.debug("Headers: %s", json.dumps(masked_headers, indent=2))
             logger.debug("Payload: %s", json.dumps(payload, indent=2, ensure_ascii=False))
 
-            async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
-                async with client.stream("POST", url, json=payload, headers=headers) as response:
+            async with (
+                httpx.AsyncClient(timeout=self.timeout_seconds) as client,
+                client.stream("POST", url, json=payload, headers=headers) as response,
+            ):
+                try:
+                    logger.debug("HTTP status code: %d", response.status_code)
+                    headers_dict = dict(response.headers)
+                    logger.debug("Response headers: %s", json.dumps(headers_dict, indent=2))
+                    if response.status_code != 200:
+                        raw_body = await response.aread()
+                        decoded_body = raw_body.decode("utf-8", errors="ignore")
+                        logger.debug("Raw response body: %s", decoded_body)
+                    else:
+                        logger.debug(
+                            "Raw response body: "
+                            "<Streaming Content - Not Consumed to Preserve Generator>"
+                        )
+                except Exception:
+                    pass
+                response.raise_for_status()
+
+                async for line in response.aiter_lines():
+                    if not line:
+                        continue
+
+                    if not line.startswith("data:"):
+                        continue
+
+                    data_str = line.removeprefix("data:").strip()
+                    if data_str == "[DONE]":
+                        break
+
                     try:
-                        logger.debug("HTTP status code: %d", response.status_code)
-                        logger.debug("Response headers: %s", json.dumps(dict(response.headers), indent=2))
-                        if response.status_code != 200:
-                            raw_body = await response.aread()
-                            logger.debug("Raw response body: %s", raw_body.decode("utf-8", errors="ignore"))
-                        else:
-                            logger.debug("Raw response body: <Streaming Content - Not Consumed to Preserve Generator>")
-                    except Exception:
-                        pass
-                    response.raise_for_status()
+                        chunk = json.loads(data_str)
+                    except json.JSONDecodeError:
+                        logger.warning("Failed to decode SSE chunk: %s", data_str)
+                        continue
 
-                    async for line in response.aiter_lines():
-                        if not line:
-                            continue
+                    choices = chunk.get("choices", [])
+                    if not choices:
+                        continue
 
-                        if not line.startswith("data:"):
-                            continue
+                    delta = choices[0].get("delta", {})
 
-                        data_str = line.removeprefix("data:").strip()
-                        if data_str == "[DONE]":
-                            break
+                    # 1. Handle Thinking / Reasoning Block
+                    if "reasoning_content" in delta and delta["reasoning_content"]:
+                        yield InternalResponseBlock(
+                            type=ContentBlockType.THINKING,
+                            thinking_text=delta["reasoning_content"],
+                        )
 
-                        try:
-                            chunk = json.loads(data_str)
-                        except json.JSONDecodeError:
-                            logger.warning("Failed to decode SSE chunk: %s", data_str)
-                            continue
+                    # 2. Handle Text Content
+                    if "content" in delta and delta["content"]:
+                        yield InternalResponseBlock(
+                            type=ContentBlockType.TEXT,
+                            text=delta["content"],
+                        )
 
-                        choices = chunk.get("choices", [])
-                        if not choices:
-                            continue
+                    # 3. Handle Tool Calls
+                    if "tool_calls" in delta and delta["tool_calls"]:
+                        for tool_call_delta in delta["tool_calls"]:
+                            idx = tool_call_delta.get("index", 0)
+                            if idx not in tool_buffers:
+                                tool_buffers[idx] = {
+                                    "id": "",
+                                    "name": "",
+                                    "arguments": "",
+                                }
 
-                        delta = choices[0].get("delta", {})
+                            buf = tool_buffers[idx]
+                            if "id" in tool_call_delta and tool_call_delta["id"]:
+                                buf["id"] = tool_call_delta["id"]
 
-                        # 1. Handle Thinking / Reasoning Block
-                        if "reasoning_content" in delta and delta["reasoning_content"]:
-                            yield InternalResponseBlock(
-                                type=ContentBlockType.THINKING,
-                                thinking_text=delta["reasoning_content"],
-                            )
-
-                        # 2. Handle Text Content
-                        if "content" in delta and delta["content"]:
-                            yield InternalResponseBlock(
-                                type=ContentBlockType.TEXT,
-                                text=delta["content"],
-                            )
-
-                        # 3. Handle Tool Calls
-                        if "tool_calls" in delta and delta["tool_calls"]:
-                            for tool_call_delta in delta["tool_calls"]:
-                                idx = tool_call_delta.get("index", 0)
-                                if idx not in tool_buffers:
-                                    tool_buffers[idx] = {
-                                        "id": "",
-                                        "name": "",
-                                        "arguments": "",
-                                    }
-
-                                buf = tool_buffers[idx]
-                                if "id" in tool_call_delta and tool_call_delta["id"]:
-                                    buf["id"] = tool_call_delta["id"]
-
-                                func_delta = tool_call_delta.get("function", {})
-                                if "name" in func_delta and func_delta["name"]:
-                                    buf["name"] = func_delta["name"]
-                                if "arguments" in func_delta and func_delta["arguments"]:
-                                    buf["arguments"] += func_delta["arguments"]
+                            func_delta = tool_call_delta.get("function", {})
+                            if "name" in func_delta and func_delta["name"]:
+                                buf["name"] = func_delta["name"]
+                            if "arguments" in func_delta and func_delta["arguments"]:
+                                buf["arguments"] += func_delta["arguments"]
 
             # After stream finishes, yield all buffered tool calls
             for idx, buf in sorted(tool_buffers.items()):
@@ -591,12 +599,15 @@ class NvidiaProvider(BaseProvider):
                 # Auto-correct key for execute_command / bash tools
                 if tool_name in ("bash", "execute_command") and "command" not in parsed_args:
                     for k, v in list(parsed_args.items()):
-                        if k in ("cmd", "args", "arguments", "raw_arguments") and isinstance(v, str):
+                        if (
+                            k in ("cmd", "args", "arguments", "raw_arguments")
+                            and isinstance(v, str)
+                        ):
                             parsed_args["command"] = v
                             del parsed_args[k]
                             break
                 return parsed_args
-            
+
             # Non-dict JSON output (e.g. raw string value)
             if tool_name in ("bash", "execute_command") and isinstance(parsed_args, str):
                 return {"command": parsed_args}

@@ -57,6 +57,7 @@ async def create_message(request: CreateMessageRequest) -> Any:
     )
 
     import os
+
     from routeflow.core.logging import request_origin_var
     if "PYTEST_CURRENT_TEST" in os.environ:
         request_origin_var.set("Unit test")

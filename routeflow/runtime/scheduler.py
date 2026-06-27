@@ -8,7 +8,7 @@ Follows ARCHITECTURE.md §8 and scheduler rules:
 
 from __future__ import annotations
 
-from routeflow.core.errors import RouteFlowError, ErrorType
+from routeflow.core.errors import ErrorType, RouteFlowError
 from routeflow.providers.pool import PoolMember
 
 

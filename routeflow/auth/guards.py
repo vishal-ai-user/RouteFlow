@@ -17,7 +17,7 @@ from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from routeflow.auth.tokens import validate_token
-from routeflow.core.errors import RouteFlowError, ErrorType
+from routeflow.core.errors import ErrorType, RouteFlowError
 
 # HTTPBearer extracts the token from "Authorization: Bearer <token>".
 # auto_error=False lets us return our own structured error instead of FastAPI's default.
@@ -33,19 +33,20 @@ async def require_auth(
 ) -> str:
     if request.url.path.startswith("/v1"):
         auth_header = request.headers.get("authorization") or request.headers.get("x-api-key")
-        masked_auth = f"{auth_header[:6]}...{auth_header[-4:]}" if auth_header and len(auth_header) > 8 else "None"
+        masked_auth = (
+            f"{auth_header[:6]}...{auth_header[-4:]}"
+            if auth_header and len(auth_header) > 8
+            else "None"
+        )
         print(f"AUTH_TRACE: Path={request.url.path}, AuthToken={masked_auth}")
 
-    token = None
-    if credentials:
-        token = credentials.credentials
-    else:
-        token = request.headers.get("x-api-key")
+    token = credentials.credentials if credentials else request.headers.get("x-api-key")
 
     if token is None:
         raise RouteFlowError(
             ErrorType.UNAUTHORIZED,
-            "Missing authentication token. Provide an Authorization: Bearer <token> or x-api-key header.",
+            "Missing authentication token. "
+            "Provide an Authorization: Bearer <token> or x-api-key header.",
         )
 
     if not validate_token(token):

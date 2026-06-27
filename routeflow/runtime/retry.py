@@ -7,7 +7,7 @@ Follows ARCHITECTURE.md §8 and retry rules.
 
 from __future__ import annotations
 
-from routeflow.core.errors import RouteFlowError, ErrorType
+from routeflow.core.errors import ErrorType, RouteFlowError
 
 
 def is_retryable_error(exc: Exception) -> bool:
