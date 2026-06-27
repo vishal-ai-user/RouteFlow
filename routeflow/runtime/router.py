@@ -32,7 +32,7 @@ class RuntimeRouter:
         pool: ProviderPool,
         scheduler: Scheduler,
         max_retries: int = 2,
-        cooldown_duration_seconds: int = 30,
+        cooldown_duration_seconds: int = 5,
         consecutive_failure_threshold: int = 3,
     ) -> None:
         self.pool = pool

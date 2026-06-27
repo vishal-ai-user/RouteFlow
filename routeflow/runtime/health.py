@@ -21,7 +21,7 @@ def handle_provider_success(member: PoolMember) -> None:
 
 def handle_provider_failure(
     member: PoolMember,
-    cooldown_duration_seconds: int = 30,
+    cooldown_duration_seconds: int = 5,
     failure_threshold: int = 3,
 ) -> None:
     """Record a failure on the pool member, initiating cooldown if failure count is exceeded."""

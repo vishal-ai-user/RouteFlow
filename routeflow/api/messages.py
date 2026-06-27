@@ -93,7 +93,7 @@ async def create_message(request: CreateMessageRequest) -> Any:
         pool=pool,
         scheduler=scheduler,
         max_retries=settings.retry_count,
-        cooldown_duration_seconds=30,
+        cooldown_duration_seconds=5,
     )
 
     # Estimate input tokens for the start event
