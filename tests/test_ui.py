@@ -1,4 +1,4 @@
-"""Unit and integration tests for the AEGIS Control Center Frontend UI serving.
+"""Unit and integration tests for the RouteFlow Control Center Frontend UI serving.
 
 Verifies:
 - Root redirect / -> /ui/
@@ -27,7 +27,7 @@ async def test_ui_index_html_loads(client: AsyncClient) -> None:
     """Requesting /ui/ should successfully serve the index.html page."""
     response = await client.get("/ui/")
     assert response.status_code == 200
-    assert "AEGIS Control Center" in response.text
+    assert "RouteFlow Server" in response.text
     assert "app.js" in response.text
 
 

@@ -1,4 +1,4 @@
-"""Unit tests for the AEGIS NVIDIA NIM provider adapter.
+"""Unit tests for the RouteFlow NVIDIA NIM provider adapter.
 
 Verifies request serialization, response deserialization, error normalization,
 mock HTTP integration, streaming chunk handling, and credentials safety.
@@ -14,8 +14,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 
-from aegis.core.errors import AegisError, ErrorType
-from aegis.core.schemas import (
+from routeflow.core.errors import RouteFlowError, ErrorType
+from routeflow.core.schemas import (
     ContentBlockType,
     InternalContentBlock,
     InternalMessage,
@@ -23,7 +23,7 @@ from aegis.core.schemas import (
     InternalToolDefinition,
     StopReason,
 )
-from aegis.providers.nvidia import NvidiaProvider
+from routeflow.providers.nvidia import NvidiaProvider
 
 # ===========================================================================
 # Request Serialization Tests
@@ -409,7 +409,7 @@ def test_auth_headers() -> None:
 
 
 class TestNvidiaProviderHttpCalls:
-    """Verification of HTTP client executions and AegisError mappings."""
+    """Verification of HTTP client executions and RouteFlowError mappings."""
 
     @pytest.mark.asyncio
     async def test_complete_api_call_success(self) -> None:
@@ -457,7 +457,7 @@ class TestNvidiaProviderHttpCalls:
         with patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post:
             mock_post.side_effect = exc
 
-            with pytest.raises(AegisError) as exc_info:
+            with pytest.raises(RouteFlowError) as exc_info:
                 await provider.complete(req)
 
             assert exc_info.value.error_type == ErrorType.UNAUTHORIZED
@@ -477,7 +477,7 @@ class TestNvidiaProviderHttpCalls:
         with patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post:
             mock_post.side_effect = exc
 
-            with pytest.raises(AegisError) as exc_info:
+            with pytest.raises(RouteFlowError) as exc_info:
                 await provider.complete(req)
 
             assert exc_info.value.error_type == ErrorType.RATE_LIMITED
@@ -491,7 +491,7 @@ class TestNvidiaProviderHttpCalls:
         with patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post:
             mock_post.side_effect = httpx.TimeoutException("Timeout")
 
-            with pytest.raises(AegisError) as exc_info:
+            with pytest.raises(RouteFlowError) as exc_info:
                 await provider.complete(req)
 
             assert exc_info.value.error_type == ErrorType.TIMEOUT
@@ -516,7 +516,7 @@ class TestNvidiaProviderHttpCalls:
             mock_post.side_effect = exc
 
             with caplog.at_level(logging.ERROR):
-                with pytest.raises(AegisError) as exc_info:
+                with pytest.raises(RouteFlowError) as exc_info:
                     await provider.complete(req)
 
                 # Ensure error message exposed to gateway/client doesn't have the key
@@ -561,7 +561,7 @@ class TestNvidiaProviderHttpCalls:
 
         mock_resp = MagicMock(spec=httpx.Response)
         mock_resp.status_code = 200
-        mock_resp.iter_lines = mock_iter_lines
+        mock_resp.aiter_lines = mock_iter_lines
 
         class MockStreamContext:
             async def __aenter__(self) -> MagicMock:
@@ -588,3 +588,28 @@ class TestNvidiaProviderHttpCalls:
             assert blocks[3].tool_use_id == "tc1"
             assert blocks[3].tool_name == "get_time"
             assert blocks[3].tool_input == {"timezone": "UTC"}
+
+
+def test_robust_tool_arguments_parsing() -> None:
+    provider = NvidiaProvider(name="test", api_key="test_key", base_url="https://api.nvidia.com")
+
+    # 1. Clean JSON parsing
+    res = provider._parse_tool_arguments("get_time", '{"timezone": "UTC"}')
+    assert res == {"timezone": "UTC"}
+
+    # 2. Markdown wrapping cleanup
+    res = provider._parse_tool_arguments("get_time", '```json\n{"timezone": "EST"}\n```')
+    assert res == {"timezone": "EST"}
+
+    # 3. Raw command string wrapping for bash tool
+    res = provider._parse_tool_arguments("bash", "npm install -g vitest")
+    assert res == {"command": "npm install -g vitest"}
+
+    # 4. Quoted command string wrapping for bash tool
+    res = provider._parse_tool_arguments("bash", '"npm run test"')
+    assert res == {"command": "npm run test"}
+
+    # 5. Auto-correct custom parameter name to standard 'command'
+    res = provider._parse_tool_arguments("bash", '{"cmd": "git status"}')
+    assert res == {"command": "git status"}
+

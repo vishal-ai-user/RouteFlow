@@ -1,4 +1,4 @@
-"""Tests for AEGIS authentication layer.
+"""Tests for RouteFlow authentication layer.
 
 Verifies:
 - Missing auth token returns 401 (SECURITY.md §4)
@@ -6,14 +6,14 @@ Verifies:
 - Valid auth token allows access
 - Auth error responses match structured error shape (API_SPEC.md §6)
 - Token validation logic (auth/tokens.py)
-- Auth disabled when AEGIS_AUTH_TOKEN is not configured
+- Auth disabled when ROUTEFLOW_AUTH_TOKEN is not configured
 """
 
 import pytest
 from httpx import AsyncClient
 
-from aegis.auth.tokens import validate_token
-from aegis.config.settings import get_settings
+from routeflow.auth.tokens import validate_token
+from routeflow.config.settings import get_settings
 
 # ---------------------------------------------------------------------------
 # Token validation unit tests
@@ -21,29 +21,29 @@ from aegis.config.settings import get_settings
 
 
 class TestValidateToken:
-    """Unit tests for aegis.auth.tokens.validate_token."""
+    """Unit tests for routeflow.auth.tokens.validate_token."""
 
     def test_valid_token_matches(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("AEGIS_AUTH_TOKEN", "my-secret")
+        monkeypatch.setenv("ROUTEFLOW_AUTH_TOKEN", "my-secret")
         get_settings.cache_clear()
         assert validate_token("my-secret") is True
         get_settings.cache_clear()
 
     def test_invalid_token_rejected(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("AEGIS_AUTH_TOKEN", "my-secret")
+        monkeypatch.setenv("ROUTEFLOW_AUTH_TOKEN", "my-secret")
         get_settings.cache_clear()
         assert validate_token("wrong-token") is False
         get_settings.cache_clear()
 
     def test_empty_token_rejected(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("AEGIS_AUTH_TOKEN", "my-secret")
+        monkeypatch.setenv("ROUTEFLOW_AUTH_TOKEN", "my-secret")
         get_settings.cache_clear()
         assert validate_token("") is False
         get_settings.cache_clear()
 
     def test_auth_disabled_when_no_token_configured(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """When AEGIS_AUTH_TOKEN is not set, all tokens should be accepted."""
-        monkeypatch.delenv("AEGIS_AUTH_TOKEN", raising=False)
+        """When ROUTEFLOW_AUTH_TOKEN is not set, all tokens should be accepted."""
+        monkeypatch.delenv("ROUTEFLOW_AUTH_TOKEN", raising=False)
         get_settings.cache_clear()
         assert validate_token("any-token") is True
         get_settings.cache_clear()
@@ -107,10 +107,10 @@ def test_constant_time_token_validation(monkeypatch: pytest.MonkeyPatch) -> None
     """Verify that validate_token calls secrets.compare_digest for security."""
     from unittest.mock import patch
 
-    from aegis.auth.tokens import validate_token
-    from aegis.config.settings import get_settings
+    from routeflow.auth.tokens import validate_token
+    from routeflow.config.settings import get_settings
 
-    monkeypatch.setenv("AEGIS_AUTH_TOKEN", "test-token-value")
+    monkeypatch.setenv("ROUTEFLOW_AUTH_TOKEN", "test-token-value")
     get_settings.cache_clear()
 
     with patch("secrets.compare_digest") as mock_compare:

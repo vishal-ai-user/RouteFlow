@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This file defines the working rules for AI coding agents operating on the AEGIS repository.
+This file defines the working rules for AI coding agents operating on the RouteFlow repository.
 
 Read order:
 1. `PROJECT_CONTEXT.md`
@@ -43,7 +43,7 @@ Do not treat this file as architecture documentation. It is only an execution ru
 - tool call support
 - authentication
 - SQLite persistence
-- AEGIS Control Center UI
+- RouteFlow Control Center UI
 
 ### Out of scope for V1
 - multi-provider support beyond NVIDIA

@@ -1,8 +1,8 @@
-# AEGIS
+# RouteFlow
 
 > **Intelligent AI Gateway**
 
-AEGIS is a self-hosted AI gateway designed to provide a stable, Claude Code-compatible interface while managing provider routing, runtime policies, streaming, and provider pooling behind the scenes.
+RouteFlow is a self-hosted AI gateway designed to provide a stable, Claude Code-compatible interface while managing provider routing, runtime policies, streaming, and provider pooling behind the scenes.
 
 > **Version:** V1 (NVIDIA NIM)
 
@@ -58,7 +58,7 @@ Read these files before contributing:
 ## Repository Structure
 
 ```text
-aegis/
+routeflow/
   api/
   auth/
   config/
@@ -93,7 +93,7 @@ uv init
 uv python install 3.12
 uv venv
 uv sync
-uv run uvicorn aegis.main:app --reload
+uv run uvicorn routeflow.main:app --reload
 ```
 
 ---
@@ -123,6 +123,6 @@ To be decided.
 
 ## Project Identity
 
-**Name:** AEGIS
+**Name:** RouteFlow
 
 **Tagline:** Intelligent AI Gateway

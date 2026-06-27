@@ -1,4 +1,4 @@
-"""Tests for AEGIS translator layer.
+"""Tests for RouteFlow translator layer.
 
 Verifies:
 - Request translation: Claude-compatible → InternalRequest
@@ -9,22 +9,22 @@ Verifies:
 - Response shape matches API_SPEC.md §4.5
 """
 
-from aegis.api.models import (
+from routeflow.api.models import (
     ContentBlock,
     CreateMessageRequest,
     Message,
     ThinkingConfig,
     ToolDefinition,
 )
-from aegis.core.schemas import (
+from routeflow.core.schemas import (
     ContentBlockType,
     InternalResponse,
     InternalResponseBlock,
     InternalUsage,
     StopReason,
 )
-from aegis.translator.request import translate_request
-from aegis.translator.response import translate_response
+from routeflow.translator.request import translate_request
+from routeflow.translator.response import translate_response
 
 # ===========================================================================
 # Request translation tests

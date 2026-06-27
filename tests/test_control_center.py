@@ -1,4 +1,4 @@
-"""Unit tests for the AEGIS Control Center Backend API.
+"""Unit tests for the RouteFlow Control Center Backend API.
 
 Verifies:
 - Auth protection on all /api endpoints
@@ -19,12 +19,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from httpx import AsyncClient
 
-from aegis.config.settings import get_settings
-from aegis.core.errors import ErrorType
-from aegis.persistence.repositories import (
+from routeflow.config.settings import get_settings
+from routeflow.core.errors import ErrorType
+from routeflow.persistence.repositories import (
     LogRepository,
 )
-from aegis.providers.pool import get_global_pool
+from routeflow.providers.pool import get_global_pool
 
 
 @pytest.fixture(autouse=True)
@@ -62,6 +62,7 @@ async def test_auth_protection_on_all_control_endpoints(client: AsyncClient) -> 
         ("GET", "/api/logs/requests/request-123"),
         ("GET", "/api/logs/errors"),
         ("GET", "/api/logs"),
+        ("DELETE", "/api/logs"),
         ("GET", "/api/usage/summary"),
     ]
 
@@ -217,7 +218,7 @@ async def test_provider_connection_test(auth_client: AsyncClient) -> None:
 
     # 2. Test Success Pathway (Mocked complete succeeds)
     with patch(
-        "aegis.providers.nvidia.NvidiaProvider.complete", new_callable=AsyncMock
+        "routeflow.providers.nvidia.NvidiaProvider.complete", new_callable=AsyncMock
     ) as mock_complete:
         mock_complete.return_value = MagicMock()
         test_resp = await auth_client.post("/api/providers/nvidia-test-conn/test")
@@ -226,12 +227,12 @@ async def test_provider_connection_test(auth_client: AsyncClient) -> None:
         assert "message" in test_resp.json()
 
     # 3. Test Failure Pathway (Mocked complete raises error)
-    from aegis.core.errors import AegisError, ErrorType
+    from routeflow.core.errors import RouteFlowError, ErrorType
 
     with patch(
-        "aegis.providers.nvidia.NvidiaProvider.complete", new_callable=AsyncMock
+        "routeflow.providers.nvidia.NvidiaProvider.complete", new_callable=AsyncMock
     ) as mock_complete:
-        mock_complete.side_effect = AegisError(
+        mock_complete.side_effect = RouteFlowError(
             ErrorType.PROVIDER_ERROR, "Mock provider credentials invalid."
         )
         test_resp = await auth_client.post("/api/providers/nvidia-test-conn/test")
@@ -260,7 +261,7 @@ async def test_provider_connection_test_model_selection(auth_client: AsyncClient
     member.provider.model_mapping = {"logical-model-x": "provider-model-y"}
 
     with patch(
-        "aegis.providers.nvidia.NvidiaProvider.complete", new_callable=AsyncMock
+        "routeflow.providers.nvidia.NvidiaProvider.complete", new_callable=AsyncMock
     ) as mock_complete:
         mock_complete.return_value = MagicMock()
         await auth_client.post("/api/providers/nvidia-test-conn-map/test")
@@ -271,7 +272,7 @@ async def test_provider_connection_test_model_selection(auth_client: AsyncClient
     # Case B: no mappings, should fallback to "meta/llama-3.3-70b-instruct"
     member.provider.model_mapping = {}
     with patch(
-        "aegis.providers.nvidia.NvidiaProvider.complete", new_callable=AsyncMock
+        "routeflow.providers.nvidia.NvidiaProvider.complete", new_callable=AsyncMock
     ) as mock_complete:
         mock_complete.return_value = MagicMock()
         await auth_client.post("/api/providers/nvidia-test-conn-map/test")
@@ -413,8 +414,8 @@ async def test_paginated_logs_filtering_and_usage(auth_client: AsyncClient) -> N
 @pytest.mark.anyio
 async def test_environment_configured_providers_in_control_center(auth_client: AsyncClient) -> None:
     """Verify that environment-configured providers are visible and handle CRUD operations."""
-    from aegis.providers.nvidia import NvidiaProvider
-    from aegis.providers.pool import PoolMember, get_global_pool
+    from routeflow.providers.nvidia import NvidiaProvider
+    from routeflow.providers.pool import PoolMember, get_global_pool
 
     # 1. Register an environment provider manually in the global pool (not in DB)
     pool = get_global_pool()
@@ -465,3 +466,14 @@ async def test_environment_configured_providers_in_control_center(auth_client: A
     assert enable_resp.status_code == 200
     assert enable_resp.json()["enabled"] is True
     assert pool.get_provider("nvidia-env-only").enabled is True
+
+
+@pytest.mark.anyio
+async def test_clear_all_logs(auth_client: AsyncClient) -> None:
+    """Verify that DELETE /api/logs clears all log entries from the database."""
+    with patch("routeflow.persistence.repositories.LogRepository.clear_all_logs", new_callable=AsyncMock) as mock_clear:
+        response = await auth_client.delete("/api/logs")
+        assert response.status_code == 200
+        assert response.json() == {"ok": True}
+        mock_clear.assert_called_once()
+

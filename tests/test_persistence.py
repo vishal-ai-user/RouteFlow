@@ -1,4 +1,4 @@
-"""Unit tests for the AEGIS SQLite persistence layer.
+"""Unit tests for the RouteFlow SQLite persistence layer.
 
 Verifies:
 - Migration run-through and schema versioning
@@ -14,9 +14,9 @@ import pathlib
 
 import pytest
 
-from aegis.persistence.db import decrypt_val, encrypt_val, get_db_connection
-from aegis.persistence.migrations import run_migrations
-from aegis.persistence.repositories import (
+from routeflow.persistence.db import decrypt_val, encrypt_val, get_db_connection
+from routeflow.persistence.migrations import run_migrations
+from routeflow.persistence.repositories import (
     LogRepository,
     ModelMappingRepository,
     ProviderRecordRepository,
@@ -27,7 +27,7 @@ from aegis.persistence.repositories import (
 @pytest.fixture
 def db_path(tmp_path: pathlib.Path) -> str:
     """Fixture returning a unique file path for a test database."""
-    return str(tmp_path / "test_aegis.db")
+    return str(tmp_path / "test_routeflow.db")
 
 
 # ===========================================================================
@@ -286,7 +286,7 @@ async def test_logging_repository(db_path: str) -> None:
 
 def test_fernet_encryption_and_legacy_xor_fallback() -> None:
     """Verify standard Fernet encryption and backward compatibility with XOR decryption."""
-    from aegis.persistence.db import decrypt_val, encrypt_val
+    from routeflow.persistence.db import decrypt_val, encrypt_val
 
     secret_key = "test-secret-key-999"
     raw_val = "sensitive-api-key-value"
@@ -319,7 +319,7 @@ def test_fernet_encryption_and_legacy_xor_fallback() -> None:
 
 def test_sqlite_wal_mode_and_timeout(db_path: str) -> None:
     """Verify SQLite WAL mode, busy timeout, and normal synchronous syncs are configured."""
-    from aegis.persistence.db import get_db_connection
+    from routeflow.persistence.db import get_db_connection
 
     # Force connection initialization to configure database parameters
     with get_db_connection(db_path) as conn:

@@ -1,4 +1,4 @@
-"""Unit tests for the AEGIS runtime routing, pool, and scheduling layer.
+"""Unit tests for the RouteFlow runtime routing, pool, and scheduling layer.
 
 Verifies:
 - Registry states (registration, enabling/disabling, active requests)
@@ -17,8 +17,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from aegis.core.errors import AegisError, ErrorType
-from aegis.core.schemas import (
+from routeflow.core.errors import RouteFlowError, ErrorType
+from routeflow.core.schemas import (
     ContentBlockType,
     InternalRequest,
     InternalResponse,
@@ -26,12 +26,12 @@ from aegis.core.schemas import (
     InternalUsage,
     StopReason,
 )
-from aegis.providers.base import BaseProvider
-from aegis.providers.pool import PoolMember, ProviderPool
-from aegis.runtime.health import handle_provider_failure, handle_provider_success
-from aegis.runtime.retry import is_retryable_error
-from aegis.runtime.router import RuntimeRouter
-from aegis.runtime.scheduler import Scheduler
+from routeflow.providers.base import BaseProvider
+from routeflow.providers.pool import PoolMember, ProviderPool
+from routeflow.runtime.health import handle_provider_failure, handle_provider_success
+from routeflow.runtime.retry import is_retryable_error
+from routeflow.runtime.router import RuntimeRouter
+from routeflow.runtime.scheduler import Scheduler
 
 # ===========================================================================
 # Mock Provider Adapter for Testing
@@ -208,7 +208,7 @@ class TestSchedulerSelection:
 
     def test_empty_eligible_list_raises(self) -> None:
         scheduler = Scheduler()
-        with pytest.raises(AegisError) as exc_info:
+        with pytest.raises(RouteFlowError) as exc_info:
             scheduler.select([])
         assert exc_info.value.error_type == ErrorType.PROVIDER_ERROR
 
@@ -275,6 +275,37 @@ class TestSchedulerSelection:
         # then lowest active requests
         assert selected is m3
 
+    def test_round_robin_selection(self) -> None:
+        scheduler = Scheduler(mode="round-robin")
+        adapter = MockTestProvider("a", Exception("unused"))
+
+        m1 = PoolMember("nvidia-1", "N1", adapter)
+        m2 = PoolMember("nvidia-2", "N2", adapter)
+
+        # Reset counter and cache to start clean
+        Scheduler._round_robin_counter = 0
+        Scheduler._last_selection_time = 0.0
+        Scheduler._last_selected_member = None
+
+        # 1. First request -> nvidia-1
+        selected1 = scheduler.select([m1, m2])
+        assert selected1 is m1
+
+        # 2. Stickiness check: immediate second request should STILL return nvidia-1
+        selected_sticky = scheduler.select([m1, m2])
+        assert selected_sticky is m1
+
+        # 3. Rotate check: simulate 3 seconds elapsed (by resetting time), should rotate to nvidia-2
+        Scheduler._last_selection_time = 0.0
+        selected2 = scheduler.select([m1, m2])
+        assert selected2 is m2
+
+        # 4. Rotate check again: simulate time elapsed, should loop back to nvidia-1
+        Scheduler._last_selection_time = 0.0
+        selected3 = scheduler.select([m1, m2])
+        assert selected3 is m1
+
+
 
 # ===========================================================================
 # Retry Policy Tests
@@ -283,14 +314,14 @@ class TestSchedulerSelection:
 
 def test_retry_policy_classifications() -> None:
     # Retryable cases
-    assert is_retryable_error(AegisError(ErrorType.RATE_LIMITED, "rate")) is True
-    assert is_retryable_error(AegisError(ErrorType.TIMEOUT, "timeout")) is True
-    assert is_retryable_error(AegisError(ErrorType.PROVIDER_ERROR, "upstream")) is True
+    assert is_retryable_error(RouteFlowError(ErrorType.RATE_LIMITED, "rate")) is True
+    assert is_retryable_error(RouteFlowError(ErrorType.TIMEOUT, "timeout")) is True
+    assert is_retryable_error(RouteFlowError(ErrorType.PROVIDER_ERROR, "upstream")) is True
 
     # Non-retryable cases
-    assert is_retryable_error(AegisError(ErrorType.UNAUTHORIZED, "auth")) is False
-    assert is_retryable_error(AegisError(ErrorType.VALIDATION_ERROR, "bad request")) is False
-    assert is_retryable_error(AegisError(ErrorType.INTERNAL_ERROR, "bug")) is False
+    assert is_retryable_error(RouteFlowError(ErrorType.UNAUTHORIZED, "auth")) is False
+    assert is_retryable_error(RouteFlowError(ErrorType.VALIDATION_ERROR, "bad request")) is False
+    assert is_retryable_error(RouteFlowError(ErrorType.INTERNAL_ERROR, "bug")) is False
 
     # General exceptions are not retryable
     assert is_retryable_error(ValueError("general error")) is False
@@ -335,7 +366,7 @@ class TestRouterOrchestration:
         pool = ProviderPool()
 
         # Provider 1: fails with retryable rate limit
-        adapter1 = MockTestProvider("adap-1", AegisError(ErrorType.RATE_LIMITED, "Over quota"))
+        adapter1 = MockTestProvider("adap-1", RouteFlowError(ErrorType.RATE_LIMITED, "Over quota"))
         member1 = PoolMember("p1", "P1", adapter1)
         pool.register_provider(member1)
 
@@ -373,11 +404,11 @@ class TestRouterOrchestration:
         pool = ProviderPool()
 
         # Both providers fail with retryable timeouts
-        adapter1 = MockTestProvider("adap-1", AegisError(ErrorType.TIMEOUT, "Timeout"))
+        adapter1 = MockTestProvider("adap-1", RouteFlowError(ErrorType.TIMEOUT, "Timeout"))
         member1 = PoolMember("p1", "P1", adapter1)
         pool.register_provider(member1)
 
-        adapter2 = MockTestProvider("adap-2", AegisError(ErrorType.TIMEOUT, "Timeout"))
+        adapter2 = MockTestProvider("adap-2", RouteFlowError(ErrorType.TIMEOUT, "Timeout"))
         member2 = PoolMember("p2", "P2", adapter2)
         pool.register_provider(member2)
 
@@ -387,7 +418,7 @@ class TestRouterOrchestration:
 
         req = InternalRequest(model="m", messages=[], max_tokens=10)
 
-        with pytest.raises(AegisError) as exc_info:
+        with pytest.raises(RouteFlowError) as exc_info:
             await router.route(req)
 
         assert exc_info.value.error_type == ErrorType.TIMEOUT
@@ -400,7 +431,7 @@ class TestRouterOrchestration:
         pool = ProviderPool()
 
         # Provider 1: Fails with unauthorized auth error (non-retryable)
-        adapter1 = MockTestProvider("adap-1", AegisError(ErrorType.UNAUTHORIZED, "Bad Key"))
+        adapter1 = MockTestProvider("adap-1", RouteFlowError(ErrorType.UNAUTHORIZED, "Bad Key"))
         member1 = PoolMember("p1", "P1", adapter1)
         pool.register_provider(member1)
 
@@ -417,7 +448,7 @@ class TestRouterOrchestration:
 
         req = InternalRequest(model="m", messages=[], max_tokens=10)
 
-        with pytest.raises(AegisError) as exc_info:
+        with pytest.raises(RouteFlowError) as exc_info:
             await router.route(req)
 
         assert exc_info.value.error_type == ErrorType.UNAUTHORIZED
@@ -433,7 +464,7 @@ class TestRouterOrchestration:
         adapter1 = MockTestProvider(
             "adap-1",
             Exception("unused"),
-            stream_blocks=AegisError(ErrorType.TIMEOUT, "Timeout"),
+            stream_blocks=RouteFlowError(ErrorType.TIMEOUT, "Timeout"),
         )
         member1 = PoolMember("p1", "P1", adapter1)
         pool.register_provider(member1)
@@ -474,7 +505,7 @@ class TestRouterOrchestration:
             request: InternalRequest,
         ) -> AsyncIterator[InternalResponseBlock]:
             yield InternalResponseBlock(type=ContentBlockType.TEXT, text="First block")
-            raise AegisError(ErrorType.PROVIDER_ERROR, "Mid-stream disconnect")
+            raise RouteFlowError(ErrorType.PROVIDER_ERROR, "Mid-stream disconnect")
 
         adapter1 = MagicMock(spec=BaseProvider)
         adapter1.complete_stream.side_effect = bad_stream_generator
@@ -496,7 +527,7 @@ class TestRouterOrchestration:
         req = InternalRequest(model="m", messages=[], max_tokens=10)
 
         blocks = []
-        with pytest.raises(AegisError) as exc_info:
+        with pytest.raises(RouteFlowError) as exc_info:
             async for block in router.route_stream(req):
                 blocks.append(block)
 

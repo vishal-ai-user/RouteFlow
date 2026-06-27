@@ -1,12 +1,12 @@
-"""Shared test fixtures for the AEGIS test suite."""
+"""Shared test fixtures for the RouteFlow test suite."""
 
 import pathlib
 
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from aegis.config.settings import get_settings
-from aegis.main import create_app
+from routeflow.config.settings import get_settings
+from routeflow.main import create_app
 
 # Fixed test auth token used across all tests.
 TEST_AUTH_TOKEN = "test-aegis-secret-token"
@@ -14,14 +14,14 @@ TEST_AUTH_TOKEN = "test-aegis-secret-token"
 
 @pytest.fixture
 def app(monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path):
-    """Create a fresh AEGIS app with a known auth token configured."""
-    test_db = tmp_path / "test_aegis.db"
-    monkeypatch.setenv("AEGIS_AUTH_TOKEN", TEST_AUTH_TOKEN)
-    monkeypatch.setenv("AEGIS_DATABASE_PATH", str(test_db))
+    """Create a fresh RouteFlow app with a known auth token configured."""
+    test_db = tmp_path / "test_routeflow.db"
+    monkeypatch.setenv("ROUTEFLOW_AUTH_TOKEN", TEST_AUTH_TOKEN)
+    monkeypatch.setenv("ROUTEFLOW_DATABASE_PATH", str(test_db))
     get_settings.cache_clear()
 
     # Run database migrations for the test database
-    from aegis.persistence.migrations import run_migrations
+    from routeflow.persistence.migrations import run_migrations
 
     run_migrations(str(test_db))
 

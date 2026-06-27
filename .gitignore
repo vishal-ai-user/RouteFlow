@@ -1,5 +1,5 @@
 # =============================================================================
-# AEGIS .gitignore
+# RouteFlow .gitignore
 # =============================================================================
 
 # Python compiler caches and bytecode
@@ -60,6 +60,7 @@ coverage.xml
 # Django/Flask/FastAPI stuff:
 instance/
 .webassets-cache
+routeflow.db
 aegis.db
 *.db
 *.sqlite
@@ -94,7 +95,4 @@ logs/
 .DS_Store?
 ehthumbs.db
 Thumbs.db
-
-# Documentation overrides
-/md files/PRODUCTION_RELEASE_GUIDE.md
 

@@ -1,4 +1,4 @@
-"""Tests for AEGIS health endpoints.
+"""Tests for RouteFlow health endpoints.
 
 Verifies:
 - GET /health returns correct liveness shape (API_SPEC.md §4.1) — public
@@ -23,7 +23,7 @@ async def test_health_response_shape(client: AsyncClient) -> None:
     response = await client.get("/health")
     data = response.json()
     assert data["ok"] is True
-    assert data["service"] == "aegis"
+    assert data["service"] == "routeflow"
     assert data["version"] == "v1"
 
 
@@ -63,7 +63,7 @@ async def test_status_response_shape(auth_client: AsyncClient) -> None:
     response = await auth_client.get("/status")
     data = response.json()
     assert data["ok"] is True
-    assert data["service"] == "aegis"
+    assert data["service"] == "routeflow"
     assert "pool" in data
     assert "runtime" in data
 

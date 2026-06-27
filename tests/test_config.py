@@ -1,4 +1,4 @@
-"""Tests for AEGIS configuration and settings.
+"""Tests for RouteFlow configuration and settings.
 
 Verifies:
 - Default values load correctly
@@ -10,7 +10,7 @@ import pathlib
 
 import pytest
 
-from aegis.config.settings import AegisSettings, get_settings
+from routeflow.config.settings import AegisSettings, get_settings
 
 
 class TestAegisSettingsDefaults:
@@ -62,34 +62,34 @@ class TestAegisSettingsDefaults:
 
     def test_default_database_path(self) -> None:
         settings = AegisSettings()
-        assert settings.database_path == "aegis.db"
+        assert settings.database_path == "routeflow.db"
 
 
 class TestAegisSettingsOverride:
     """Verify that environment variables override defaults."""
 
     def test_port_override(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("AEGIS_PORT", "9000")
+        monkeypatch.setenv("ROUTEFLOW_PORT", "9000")
         settings = AegisSettings()
         assert settings.port == 9000
 
     def test_log_level_override(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("AEGIS_LOG_LEVEL", "DEBUG")
+        monkeypatch.setenv("ROUTEFLOW_LOG_LEVEL", "DEBUG")
         settings = AegisSettings()
         assert settings.log_level == "DEBUG"
 
     def test_streaming_disabled(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("AEGIS_STREAMING_ENABLED", "false")
+        monkeypatch.setenv("ROUTEFLOW_STREAMING_ENABLED", "false")
         settings = AegisSettings()
         assert settings.streaming_enabled is False
 
     def test_auth_token_from_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("AEGIS_AUTH_TOKEN", "test-secret-token")
+        monkeypatch.setenv("ROUTEFLOW_AUTH_TOKEN", "test-secret-token")
         settings = AegisSettings()
         assert settings.auth_token == "test-secret-token"
 
     def test_scheduler_mode_override(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("AEGIS_SCHEDULER_MODE", "round-robin")
+        monkeypatch.setenv("ROUTEFLOW_SCHEDULER_MODE", "round-robin")
         settings = AegisSettings()
         assert settings.scheduler_mode == "round-robin"
 
@@ -126,7 +126,7 @@ def test_settings_database_override_whitelisting(
     conn.close()
 
     # Configure database path via monkeypatch
-    monkeypatch.setenv("AEGIS_DATABASE_PATH", str(db_file))
+    monkeypatch.setenv("ROUTEFLOW_DATABASE_PATH", str(db_file))
     get_settings.cache_clear()
 
     # Load settings
@@ -155,7 +155,7 @@ def test_settings_database_parse_error_warning(
     conn.commit()
     conn.close()
 
-    monkeypatch.setenv("AEGIS_DATABASE_PATH", str(db_file))
+    monkeypatch.setenv("ROUTEFLOW_DATABASE_PATH", str(db_file))
     get_settings.cache_clear()
 
     with patch("logging.Logger.warning") as mock_warning:

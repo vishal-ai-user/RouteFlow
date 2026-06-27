@@ -1,4 +1,4 @@
-"""Tests for AEGIS gateway message endpoints.
+"""Tests for RouteFlow gateway message endpoints.
 
 Verifies:
 - POST /v1/messages validates request payloads (API_SPEC.md §4.5)
@@ -382,7 +382,7 @@ async def test_models_returns_default_model(auth_client: AsyncClient) -> None:
 
 async def test_messages_non_stream_success(auth_client: AsyncClient) -> None:
     """POST /v1/messages non-streaming integration success."""
-    from aegis.core.schemas import (
+    from routeflow.core.schemas import (
         ContentBlockType,
         InternalResponse,
         InternalResponseBlock,
@@ -399,7 +399,7 @@ async def test_messages_non_stream_success(auth_client: AsyncClient) -> None:
         usage=InternalUsage(input_tokens=10, output_tokens=5),
     )
 
-    with patch("aegis.runtime.router.RuntimeRouter.route", new_callable=AsyncMock) as mock_route:
+    with patch("routeflow.runtime.router.RuntimeRouter.route", new_callable=AsyncMock) as mock_route:
         mock_route.return_value = mock_res
 
         response = await auth_client.post(
@@ -420,13 +420,13 @@ async def test_messages_non_stream_success(auth_client: AsyncClient) -> None:
 
 async def test_messages_stream_success(auth_client: AsyncClient) -> None:
     """POST /v1/messages streaming integration success."""
-    from aegis.core.schemas import ContentBlockType, InternalResponseBlock
+    from routeflow.core.schemas import ContentBlockType, InternalResponseBlock
 
     async def mock_stream(request):
         yield InternalResponseBlock(type=ContentBlockType.TEXT, text="Hello")
         yield InternalResponseBlock(type=ContentBlockType.TEXT, text=" world")
 
-    with patch("aegis.runtime.router.RuntimeRouter.route_stream") as mock_route:
+    with patch("routeflow.runtime.router.RuntimeRouter.route_stream") as mock_route:
         mock_route.side_effect = mock_stream
 
         response = await auth_client.post(
@@ -453,14 +453,14 @@ async def test_messages_stream_cancellation(auth_client: AsyncClient) -> None:
     """POST /v1/messages stream cancellation preserves database logging with status 499."""
     import asyncio
 
-    from aegis.core.schemas import ContentBlockType, InternalResponseBlock
-    from aegis.persistence.repositories import LogRepository
+    from routeflow.core.schemas import ContentBlockType, InternalResponseBlock
+    from routeflow.persistence.repositories import LogRepository
 
     async def mock_stream_cancel(request):
         yield InternalResponseBlock(type=ContentBlockType.TEXT, text="Hello")
         raise asyncio.CancelledError()
 
-    with patch("aegis.runtime.router.RuntimeRouter.route_stream") as mock_route:
+    with patch("routeflow.runtime.router.RuntimeRouter.route_stream") as mock_route:
         mock_route.side_effect = mock_stream_cancel
 
         with contextlib.suppress(asyncio.CancelledError, Exception):

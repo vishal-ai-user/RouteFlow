@@ -1,4 +1,4 @@
-"""Tests for AEGIS internal schemas.
+"""Tests for RouteFlow internal schemas.
 
 Verifies:
 - All internal model types can be constructed
@@ -7,7 +7,7 @@ Verifies:
 - Serialization produces expected output
 """
 
-from aegis.core.schemas import (
+from routeflow.core.schemas import (
     ContentBlockType,
     InternalContentBlock,
     InternalMessage,

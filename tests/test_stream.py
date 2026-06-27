@@ -1,4 +1,4 @@
-"""Unit tests for the AEGIS Server-Sent Events (SSE) streaming engine.
+"""Unit tests for the RouteFlow Server-Sent Events (SSE) streaming engine.
 
 Verifies:
 - Event formatting and SSE encoder
@@ -15,11 +15,11 @@ from collections.abc import AsyncIterator
 
 import pytest
 
-from aegis.core.errors import AegisError, ErrorType
-from aegis.core.schemas import ContentBlockType, InternalResponseBlock
-from aegis.stream.encoder import encode_sse_event
-from aegis.stream.normalizer import normalize_stream
-from aegis.stream.sse import sse_streaming_response
+from routeflow.core.errors import RouteFlowError, ErrorType
+from routeflow.core.schemas import ContentBlockType, InternalResponseBlock
+from routeflow.stream.encoder import encode_sse_event
+from routeflow.stream.normalizer import normalize_stream
+from routeflow.stream.sse import sse_streaming_response
 
 # ===========================================================================
 # SSE Encoder Tests
@@ -173,7 +173,7 @@ class TestStreamNormalizer:
     async def test_mid_stream_provider_error(self) -> None:
         async def mock_error_blocks() -> AsyncIterator[InternalResponseBlock]:
             yield InternalResponseBlock(type=ContentBlockType.TEXT, text="Ok start.")
-            raise AegisError(ErrorType.RATE_LIMITED, "Over rate limit")
+            raise RouteFlowError(ErrorType.RATE_LIMITED, "Over rate limit")
 
         events_list = []
         async for event in normalize_stream(mock_error_blocks(), "msg_err", "m"):
