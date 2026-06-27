@@ -411,6 +411,28 @@ class NvidiaProvider(BaseProvider):
                         "function": {"name": tool_name},
                     }
 
+        # Estimate input tokens from the actual payload:
+        # Stringify the messages and tools to get a highly accurate character count
+        payload_str = json.dumps(messages)
+        if "tools" in payload:
+            payload_str += json.dumps(payload["tools"])
+
+        estimated_input_tokens = len(payload_str) // 3
+
+        # Dynamic max_tokens capping to fit within the 128k context length of NVIDIA NIM
+        max_context = 131072
+        safety_buffer = 4000
+        if estimated_input_tokens + request.max_tokens > max_context - safety_buffer:
+            adjusted_max = max_context - estimated_input_tokens - safety_buffer
+            capped_max = max(1000, adjusted_max)
+            payload["max_tokens"] = capped_max
+            logger.info(
+                "Capped max_tokens for request: original=%d, estimated_input=%d, capped=%d",
+                request.max_tokens,
+                estimated_input_tokens,
+                capped_max,
+            )
+
         return payload
 
     def deserialize_response(self, response_data: dict[str, Any]) -> InternalResponse:

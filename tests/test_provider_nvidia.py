@@ -71,6 +71,26 @@ class TestNvidiaRequestSerialization:
         payload = provider.serialize_request(req)
         assert payload["model"] == "nvidia/llama-3.1-70b-instruct"
 
+    def test_max_tokens_capping_for_huge_requests(self) -> None:
+        provider = NvidiaProvider("test", "api-key-1", "https://api.nvidia.com")
+        # 300,000 characters in user message (approx 100,000 tokens)
+        large_text = "x" * 300000
+        req = InternalRequest(
+            model="claude-sonnet",
+            messages=[
+                InternalMessage(
+                    role="user",
+                    content=[InternalContentBlock(type=ContentBlockType.TEXT, text=large_text)],
+                )
+            ],
+            max_tokens=32000,
+        )
+        payload = provider.serialize_request(req)
+        # Expected total payload chars: approx 300,000 + JSON formatting
+        # estimated_input_tokens = ~300050 // 3 = ~100016
+        # max_tokens should be capped at: 131072 - 100016 - 4000 = 27056
+        assert payload["max_tokens"] == 27061
+
 
     def test_system_prompt_merging(self) -> None:
         provider = NvidiaProvider("test", "k", "https://api")
