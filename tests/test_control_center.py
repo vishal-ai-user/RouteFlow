@@ -227,7 +227,7 @@ async def test_provider_connection_test(auth_client: AsyncClient) -> None:
         assert "message" in test_resp.json()
 
     # 3. Test Failure Pathway (Mocked complete raises error)
-    from routeflow.core.errors import RouteFlowError, ErrorType
+    from routeflow.core.errors import ErrorType, RouteFlowError
 
     with patch(
         "routeflow.providers.nvidia.NvidiaProvider.complete", new_callable=AsyncMock

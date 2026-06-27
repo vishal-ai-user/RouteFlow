@@ -59,6 +59,17 @@ class TestTranslateRequestBasic:
         result = translate_request(api_req)
         assert result.max_tokens == 500
 
+    def test_max_tokens_capping_for_large_inputs(self) -> None:
+        """When input + max_tokens > 131072 - safety_buffer, max_tokens should be capped."""
+        large_content = "a" * 400000
+        api_req = CreateMessageRequest(
+            model="claude-sonnet-4-20250514",
+            messages=[Message(role="user", content=large_content)],
+            max_tokens=32000,
+        )
+        result = translate_request(api_req)
+        assert result.max_tokens == 28072
+
     def test_stream_flag_preserved(self) -> None:
         api_req = CreateMessageRequest(
             model="claude-sonnet-4-20250514",

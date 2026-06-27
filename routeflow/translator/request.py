@@ -50,11 +50,27 @@ def translate_request(
     Returns:
         A fully normalized InternalRequest.
     """
+    # Estimate input token count from characters (chars // 4 is a standard approximation)
+    total_chars = 0
+    if api_request.system:
+        total_chars += len(str(api_request.system))
+    for msg in api_request.messages:
+        total_chars += len(str(msg.content))
+    estimated_input_tokens = max(1, total_chars // 4)
+
+    # Dynamic max_tokens capping to fit within the 128k context length of NVIDIA NIM
+    max_tokens = api_request.max_tokens
+    max_context = 131072
+    safety_buffer = 3000
+    if estimated_input_tokens + max_tokens > max_context - safety_buffer:
+        adjusted_max = max_context - estimated_input_tokens - safety_buffer
+        max_tokens = max(1000, adjusted_max)
+
     return InternalRequest(
         model=api_request.model,
         messages=_normalize_messages(api_request.messages),
         system=_normalize_system(api_request.system),
-        max_tokens=api_request.max_tokens,
+        max_tokens=max_tokens,
         temperature=api_request.temperature,
         stream=api_request.stream,
         tools=_normalize_tools(api_request.tools),

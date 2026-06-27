@@ -17,7 +17,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from routeflow.core.errors import RouteFlowError, ErrorType
+from routeflow.core.errors import ErrorType, RouteFlowError
 from routeflow.core.schemas import (
     ContentBlockType,
     InternalRequest,

@@ -15,7 +15,7 @@ from collections.abc import AsyncIterator
 
 import pytest
 
-from routeflow.core.errors import RouteFlowError, ErrorType
+from routeflow.core.errors import ErrorType, RouteFlowError
 from routeflow.core.schemas import ContentBlockType, InternalResponseBlock
 from routeflow.stream.encoder import encode_sse_event
 from routeflow.stream.normalizer import normalize_stream
